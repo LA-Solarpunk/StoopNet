@@ -68,6 +68,9 @@ examples/stoop_net_radio/
   MyMesh.cpp/.h         mesh behavior for this node
   RateLimiter.cpp/.h    the two token buckets described above
   web/                  the HTML and JS served to phones
+client-esp-32/          M5StickC test client + scripts to flash both devices,
+                        join the node's AP and verify changes end-to-end
+                        (see client-esp-32/README.md)
 ```
 
 ## Status
