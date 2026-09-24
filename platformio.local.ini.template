@@ -13,3 +13,13 @@
 [stoop_secrets]
 build_flags =
    -D STOOP_CHANNEL_PSK='"<your base64 key>"'
+
+   ; Optional: have the device join an existing WiFi network as a client and
+   ; serve the web UI over mDNS at http://<CLIENT_WIFI_URL>.local instead of
+   ; hosting its own access point. Leave these commented out to keep the
+   ; device's normal AP-mode behavior; if the connection attempt fails (or
+   ; later drops and can't be reconnected after a few tries) it falls back
+   ; to AP mode automatically.
+   ; -D CLIENT_WIFI_SSID='"<your wifi ssid>"'
+   ; -D CLIENT_WIFI_PW='"<your wifi password>"'
+   ; -D CLIENT_WIFI_URL='"<hostname, e.g. stoop-node>"'
