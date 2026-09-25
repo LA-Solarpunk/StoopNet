@@ -30,7 +30,7 @@
     border-bottom: 1px solid var(--line);
     background: var(--bg);
   }
-  .wrap{ max-width: 560px; margin: 0 auto; width: 100%; }
+  .wrap{ max-width: 720px; margin: 0 auto; width: 100%; }
   .back{
     display:inline-block;
     color: var(--muted);
@@ -66,19 +66,29 @@
     overflow-y: auto;
     padding: 16px;
   }
+  .messages-list{
+    display: flex;
+    flex-direction: column;
+  }
   .empty{
     color: var(--muted);
     text-align: center;
     margin-top: 40px;
   }
   .msg{
+    align-self: flex-start;   /* received: left justified */
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 10px 14px;
     margin-bottom: 10px;
-    max-width: 560px;
+    max-width: 480px;
     box-shadow: 0 1px 6px rgba(60, 40, 10, 0.05);
+  }
+  .msg.sent{
+    align-self: flex-end;    /* sent: right justified */
+    background: rgba(217, 140, 43, 0.12);
+    border-color: var(--amber);
   }
   .msg .sender{
     font-weight: 600;
@@ -149,8 +159,10 @@
   </div>
 </div>
 
-<main id="messages">
-  <div class="empty" id="empty">No messages yet. Be the first to say hello.</div>
+<main id="messages-viewport">
+  <div class="wrap messages-list" id="messages">
+    <div class="empty" id="empty">No messages yet. Be the first to say hello.</div>
+  </div>
 </main>
 
 <div class="status" id="status"></div>
@@ -167,6 +179,7 @@
 
 <script>
   const messagesEl = document.getElementById('messages');
+  const messagesViewport = document.getElementById('messages-viewport');
   const emptyEl = document.getElementById('empty');
   const statusEl = document.getElementById('status');
   const form = document.getElementById('send-form');
@@ -177,6 +190,11 @@
   const charCountEl = document.getElementById('char-count');
 
   const username = (localStorage.getItem('stoop_username') || '').trim();
+  // messages come back as "username@nodename: body", where the server has already
+  // truncated username to STOOP_MAX_USERNAME_LEN (server.cpp) -- truncate the same
+  // way here so a long local username still matches its own sent messages
+  const STOOP_MAX_USERNAME_LEN = 15;
+  const myWireUsername = username.slice(0, STOOP_MAX_USERNAME_LEN);
   let allMessages = [];
   let maxPostBytes = 128; // corrected by /api/stoop/max_message_bytes below; server enforces the real value regardless
   let budgetOk = false;    // unknown until the first /api/limits response -- fail closed, not open
@@ -267,6 +285,15 @@
     return { sender: text.slice(0, i), body: text.slice(i + 2) };
   }
 
+  // true if `sender` ("username@nodename") is us -- only meaningful once we've
+  // picked a username, since without one we can't have sent anything
+  function isOwnMessage(sender) {
+    if (!myWireUsername || !sender) return false;
+    const at = sender.indexOf('@');
+    const senderUsername = at === -1 ? sender : sender.slice(0, at);
+    return senderUsername === myWireUsername;
+  }
+
   function formatTime(ts) {
     // ts is only meaningful once the node's clock has been set
     if (!ts || ts < 1600000000) return '';
@@ -284,14 +311,14 @@
     for (const m of list) {
       const { sender, body } = splitSender(m.text);
       const div = document.createElement('div');
-      div.className = 'msg';
+      div.className = isOwnMessage(sender) ? 'msg sent' : 'msg';
       const senderSpan = sender ? `<span class="sender">${escapeHtml(sender)}</span>` : '';
       const time = formatTime(m.ts);
       div.innerHTML = `${senderSpan}${escapeHtml(body)}` +
         (time ? `<span class="time">${time}</span>` : '');
       messagesEl.appendChild(div);
     }
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    messagesViewport.scrollTop = messagesViewport.scrollHeight;
   }
 
   function escapeHtml(s) {
