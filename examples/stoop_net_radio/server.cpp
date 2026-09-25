@@ -3,10 +3,9 @@
 #ifdef WIFI_SSID
 #ifdef ESP32
 
-#include <WebServer.h>
 #include <helpers/esp32/SerialWifiInterface.h> // WIFI_DEBUG_PRINTLN, pulls in WiFi.h
 #include "MyMesh.h"
-#include "RateLimiter.h"
+#include "wifi_manager.h" // server, rate_limiter, wifiClientModeActive()
 #include <web_assets.h>
 
 #ifndef STOOP_NODE_NAME
@@ -27,12 +26,7 @@
 #define STOOP_SESSION_HEADER "X-Stoop-Session"
 
 // defined in main.cpp
-extern WebServer server;
-extern RateLimiter rate_limiter;
 extern MyMesh the_mesh;
-#if defined(CLIENT_WIFI_SSID)
-extern bool wifi_client_active;
-#endif
 
 // escape a string for safe embedding inside a JSON string literal
 static void appendJsonEscaped(String& out, const char* s) {
@@ -189,12 +183,10 @@ void configureServer() {
   server.onNotFound([](){
     WIFI_DEBUG_PRINTLN("onNotFound: method=%d host=%s uri=%s",
                        (int)server.method(), server.hostHeader().c_str(), server.uri().c_str());
-#if defined(CLIENT_WIFI_SSID)
-    if (wifi_client_active) {
+    if (wifiClientModeActive()) {
       server.send(404, "text/plain", "Not found");
       return;
     }
-#endif
     server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
     server.send(302, "text/plain", "");
   });

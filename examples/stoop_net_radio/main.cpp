@@ -1,13 +1,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
-#include <WebServer.h>
 #include "MyMesh.h"
-#include "RateLimiter.h"
-#include "server.h"
-#include <esp_wifi.h>
-#if defined(WIFI_SSID) && defined(CLIENT_WIFI_SSID)
-  #include <ESPmDNS.h>
-#endif
+#include "wifi_manager.h"
 
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -36,42 +30,6 @@ MultiSerialInterface interface_manager;
   #else
     #error "SerialBLEInterface is not defined for this platform"
   #endif
-#endif
-
-// include wifi interface
-#ifdef WIFI_SSID
-  #ifndef TCP_PORT
-    #define TCP_PORT 5000
-  #endif
-  #ifdef ESP32
-    // include esp32 wifi interface
-    #include <helpers/esp32/SerialWifiInterface.h>
-    SerialWifiInterface wifi_interface;
-    WebServer server(80);
-    #include <DNSServer.h>
-    DNSServer dns_server;
-    RateLimiter rate_limiter;
-    ConnectionLimiter connection_limiter;
-  #else
-    #error "SerialWifiInterface is not defined for this platform"
-  #endif
-#endif
-
-#if defined(WIFI_SSID) && defined(CLIENT_WIFI_SSID)
-  #ifndef STOOP_CLIENT_WIFI_CONNECT_TIMEOUT_MS
-    #define STOOP_CLIENT_WIFI_CONNECT_TIMEOUT_MS 15000
-  #endif
-  #ifndef STOOP_CLIENT_WIFI_RECONNECT_ATTEMPTS
-    #define STOOP_CLIENT_WIFI_RECONNECT_ATTEMPTS 5
-  #endif
-  #ifndef STOOP_CLIENT_WIFI_RECONNECT_INTERVAL_MS
-    #define STOOP_CLIENT_WIFI_RECONNECT_INTERVAL_MS 10000
-  #endif
-
-  bool wifi_client_active = false;
-  bool wifi_needs_reconnect = false;
-  int wifi_reconnect_attempts = 0;
-  unsigned long last_wifi_reconnect_attempt = 0;
 #endif
 
 // include usb interface
@@ -136,101 +94,8 @@ void halt() {
   while (1) ;
 }
 
-#ifdef WIFI_SSID
-void startWifiAp() {
-
-#if defined(CLIENT_WIFI_SSID)
-  MDNS.end();
-  WiFi.disconnect(true);
-#endif
-
-  WiFi.mode(WIFI_AP);
-  // For some reason, android wants the AP to be on IP 8.8.8.8 for captive portal detection to work
-  IPAddress ap_ip(8, 8, 8, 8);
-  WiFi.softAPConfig(ap_ip, ap_ip, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(WIFI_SSID, NULL, 1, false, STOOP_MAX_CONNECTED_CLIENTS);
-  WIFI_DEBUG_PRINTLN("WiFi AP started");
-
-  dns_server.start(53, "*", WiFi.softAPIP()); // redirect all DNS lookups to us
-
-  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
-    switch (event) {
-      case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-        WIFI_DEBUG_PRINTLN("Client connected: %02X:%02X:%02X:%02X:%02X:%02X",
-                           info.wifi_ap_staconnected.mac[0], info.wifi_ap_staconnected.mac[1],
-                           info.wifi_ap_staconnected.mac[2], info.wifi_ap_staconnected.mac[3],
-                           info.wifi_ap_staconnected.mac[4], info.wifi_ap_staconnected.mac[5]);
-        connection_limiter.connectClient(info.wifi_ap_staconnected.mac, millis());
-        break;
-      case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-        WIFI_DEBUG_PRINTLN("Client disconnected: %02X:%02X:%02X:%02X:%02X:%02X",
-                           info.wifi_ap_stadisconnected.mac[0], info.wifi_ap_stadisconnected.mac[1],
-                           info.wifi_ap_stadisconnected.mac[2], info.wifi_ap_stadisconnected.mac[3],
-                           info.wifi_ap_stadisconnected.mac[4], info.wifi_ap_stadisconnected.mac[5]);
-        connection_limiter.disconnectClient(info.wifi_ap_stadisconnected.mac);
-        break;
-      default:
-        break;
-    }
-  });
-}
-#endif
-
-#if defined(WIFI_SSID) && defined(CLIENT_WIFI_SSID)
-bool startWifiClient() {
-  WIFI_DEBUG_PRINTLN("Connecting to client WiFi: %s", CLIENT_WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(CLIENT_WIFI_SSID, CLIENT_WIFI_PW);
-
-  unsigned long connect_start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - connect_start < STOOP_CLIENT_WIFI_CONNECT_TIMEOUT_MS) {
-    delay(250);
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    WIFI_DEBUG_PRINTLN("Failed to connect to client WiFi, falling back to AP mode");
-    return false;
-  }
-
-  WIFI_DEBUG_PRINTLN("Connected to client WiFi, IP=%s", WiFi.localIP().toString().c_str());
-
-  if (MDNS.begin(CLIENT_WIFI_URL)) {
-    MDNS.addService("http", "tcp", 80);
-    WIFI_DEBUG_PRINTLN("mDNS responder started: http://%s.local/", CLIENT_WIFI_URL);
-  } else {
-    WIFI_DEBUG_PRINTLN("mDNS responder failed to start");
-  }
-
-  wifi_client_active = true;
-  wifi_needs_reconnect = false;
-  wifi_reconnect_attempts = 0;
-
-  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
-    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-      if (wifi_client_active) {
-        WIFI_DEBUG_PRINTLN("Client WiFi disconnected. Flagging for reconnect...");
-        wifi_needs_reconnect = true;
-      }
-    } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-      WIFI_DEBUG_PRINTLN("Client WiFi connected successfully!");
-      wifi_needs_reconnect = false;
-      wifi_reconnect_attempts = 0;
-    }
-  });
-
-  return true;
-}
-#endif
-
-void setup() {
-  Serial.begin(115200);
-  board.begin();
-
-#ifdef HAS_EXTERNAL_WATCHDOG
-  external_watchdog.begin();
-#endif
-
 #ifdef DISPLAY_CLASS
+DisplayDriver* configureDisplay() {
   DisplayDriver* disp = NULL;
   if (display.begin()) {
     disp = &display;
@@ -241,12 +106,11 @@ void setup() {
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
     disp->endFrame();
   }
+  return disp;
+}
 #endif
 
-  if (!radio_init()) { halt(); }
-
-  fast_rng.begin(radio_driver.getRngSeed());
-
+void configureFS(bool has_display) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   InternalFS.begin();
   #if defined(QSPIFLASH)
@@ -262,63 +126,31 @@ void setup() {
   #endif
   #endif
   store.begin();
-  the_mesh.begin(
-    #ifdef DISPLAY_CLASS
-        disp != NULL
-    #else
-        false
-    #endif
-  );
+  the_mesh.begin(has_display);
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   store.begin();
-  the_mesh.begin(
-    #ifdef DISPLAY_CLASS
-        disp != NULL
-    #else
-        false
-    #endif
-  );
+  the_mesh.begin(has_display);
 #elif defined(ESP32)
   SPIFFS.begin(true);
   store.begin();
-  the_mesh.begin(
-    #ifdef DISPLAY_CLASS
-        disp != NULL
-    #else
-        false
-    #endif
-  );
+  the_mesh.begin(has_display);
 #else
   #error "need to define filesystem"
 #endif
+}
 
+#ifdef WIFI_SSID
+void configureWiFi() {
+  wifiManagerBegin(interface_manager, fast_rng);
+}
+#endif
+
+void configureInterfaces() {
 // add bluetooth interface
 #if defined(BLE_PIN_CODE)
   bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
   interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
-#endif
-
-#ifdef WIFI_SSID
-
-  board.setInhibitSleep(true);   // prevent sleep when WiFi is active
-  rate_limiter.begin(&fast_rng);
-  bool wifi_joined_as_client = false;
-
-#if defined(CLIENT_WIFI_SSID)
-  wifi_joined_as_client = startWifiClient();
-#endif
-  if (!wifi_joined_as_client) {
-    startWifiAp();
-      WIFI_DEBUG_PRINTLN("Could not connect to WiFi client network, starting AP");
-  } else {
-      WIFI_DEBUG_PRINTLN("Client WiFi (re)connected successfully!");
-  }
-
-  configureServer();
-
-  wifi_interface.begin(TCP_PORT);
-  interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
 #endif
 
 // add usb interface
@@ -342,6 +174,40 @@ void setup() {
 #endif
 
   the_mesh.startInterface(interface_manager);
+}
+
+void setup() {
+  Serial.begin(115200);
+  board.begin();
+
+#ifdef HAS_EXTERNAL_WATCHDOG
+  external_watchdog.begin();
+#endif
+
+#ifdef DISPLAY_CLASS
+  DisplayDriver* disp = configureDisplay();
+#endif
+
+  if (!radio_init()) { halt(); }
+
+  fast_rng.begin(radio_driver.getRngSeed());
+
+  configureFS(
+    #ifdef DISPLAY_CLASS
+        disp != NULL
+    #else
+        false
+    #endif
+  );
+
+// wifi is also an interface, but is set up on its own since (unlike the
+// others) it needs to be up before configureInterfaces() registers it
+#ifdef WIFI_SSID
+  configureWiFi();
+#endif
+
+  configureInterfaces();
+
   sensors.begin();
 
 #if ENV_INCLUDE_GPS == 1
@@ -355,33 +221,12 @@ void setup() {
   board.onBootComplete();
 }
 
-// If a client has been on the network too long, disconnect them to make room for new clients.
-void checkDisconnectClient() {
-  #ifdef WIFI_SSID
-    uint8_t mac[6];
-    while (connection_limiter.getClientDisconnect(mac, millis())) {
-      uint16_t aid;
-      esp_wifi_ap_get_sta_aid(mac, &aid);
-      esp_err_t err = esp_wifi_deauth_sta(aid);
-      WIFI_DEBUG_PRINTLN("Disconnecting client %02X:%02X:%02X:%02X:%02X:%02X due to max connection length",
-                         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    }
-  #endif
-}
-
 void loop() {
   the_mesh.loop();
   interface_manager.loop();
   sensors.loop();
 #ifdef WIFI_SSID
-  server.handleClient();
-#if defined(CLIENT_WIFI_SSID)
-  if (!wifi_client_active) {
-    dns_server.processNextRequest();
-  }
-#else
-  dns_server.processNextRequest();
-#endif
+  wifiManagerLoop();
 #endif
 #ifdef DISPLAY_CLASS
   ui_task.loop();
@@ -389,27 +234,6 @@ void loop() {
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
-#endif
-  // TODO(Heidt) we can probably make this only check every once in awhile
-  checkDisconnectClient();
-
-#if defined(WIFI_SSID) && defined(CLIENT_WIFI_SSID)
-  // client WiFi dropped. Retry a few times then give up and fall back to AP mode
-  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > STOOP_CLIENT_WIFI_RECONNECT_INTERVAL_MS)) {
-    last_wifi_reconnect_attempt = millis();
-    wifi_reconnect_attempts++;
-    if (wifi_reconnect_attempts > STOOP_CLIENT_WIFI_RECONNECT_ATTEMPTS) {
-      WIFI_DEBUG_PRINTLN("Client WiFi reconnect attempts exhausted, switching to AP mode");
-      wifi_client_active = false;
-      wifi_needs_reconnect = false;
-      startWifiAp();
-    } else {
-      WIFI_DEBUG_PRINTLN("Attempting client WiFi reconnect (%d/%d)...",
-                         wifi_reconnect_attempts, STOOP_CLIENT_WIFI_RECONNECT_ATTEMPTS);
-      WiFi.disconnect();
-      WiFi.reconnect();
-    }
-  }
 #endif
 
   if (!the_mesh.hasPendingWork()) {
