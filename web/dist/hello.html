@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hello StoopNet</title>
+  <link href="/index.css" rel="stylesheet">
+  <script defer src="/index.js"></script>
+</head>
+<body class="guide">
+<h1>Hello, StoopNet</h1>
+<p>This page is compiled from <code>md/hello.md</code> at build time. The front matter
+above gives the document its title, and <code>type: guide</code> becomes a class on
+the <code>&lt;body&gt;</code> element.</p>
+<h2>What the compiler does</h2>
+<ul>
+<li>Renders markdown (headings, lists, <code>code</code>, quotes) to HTML</li>
+<li>Links the shared stylesheet and script: <code>/index.css</code> and <code>/index.js</code></li>
+<li>Maps the <code>type</code> front matter key to a class on <code>&lt;body&gt;</code></li>
+</ul>
+<h2>Linking pages</h2>
+<p>Wikilinks point at other compiled pages: <a href="hello.html">back to this page</a>
+links here, while <code>[[other-page|a friendly name]]</code> would link to
+<code>other-page.html</code> (just <code>[[other-page]]</code> uses the page name as the
+link text).</p>
+<h2>Styling this page</h2>
+<p>The shared stylesheet applies everywhere. Page-specific styling can target
+the body class:</p>
+<pre><code class="language-css">body.guide {
+  /* guide-specific styles */
+}
+</code></pre>
+
+</body>
+
+</html>

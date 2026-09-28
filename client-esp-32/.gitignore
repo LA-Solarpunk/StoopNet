@@ -1,9 +1,0 @@
-.pio/
-logs/
-sdkconfig
-sdkconfig.old
-dependencies.lock
-__pycache__/
-*.pyc
-.venv/
-.DS_Store

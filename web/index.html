@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--  Essential META Tags -->
+  <meta property="og:title" content="web">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="">
+  <meta property="og:url" content="StoopNet">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!--  Non-Essential, But Recommended -->
+  <meta property="og:description" content="Stoop Net Front End">
+  <meta property="og:site_name" content="web">
+  <meta name="twitter:image:alt" content="">
+
+  <title>web</title>
+
+</head>
+
+<body>
+  <h1>web</h1>
+  <p>Stoop Net Front End</p>
+
+  <!-- ========================================================================= -->
+  <!-- Core Examples                                                             -->
+  <!-- ========================================================================= -->
+
+  <section id="core-examples">
+    <h2>Core Examples</h2>
+
+    <!--
+      Example Component
+      Demonstrates dataroom-js custom element basics and web worker communication.
+      The component emits a "WEB-WORKER-RESPONSE" event when the worker replies.
+    -->
+    <example-component id="example_component"></example-component>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- Interactive Components                                                    -->
+  <!-- ========================================================================= -->
+
+  <section id="interactive-examples">
+    <h2>Interactive Components</h2>
+
+    <!-- Counter: demonstrates state management and custom events -->
+    <counter-component id="counter_component"></counter-component>
+
+    <!-- Fetch Example: demonstrates getJSON() and API integration -->
+    <fetch-example-component id="fetch_component"></fetch-example-component>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- Stoop Net                                                                 -->
+  <!-- ========================================================================= -->
+
+  <section id="stoop-net">
+    <h2>Stoop Net</h2>
+
+    <p>
+      Set your neighborhood identity below, then head to the
+      <a href="chat.html">chat demo</a>. The card asks for a display name
+      and a password: the name is stored in local storage and the password
+      is stretched into a signing key, so every message ends with a
+      7-character signature.
+    </p>
+
+    <!-- Stoop ID: identity card — name + password, signing key in localStorage.
+         Listens for its "identity-changed" event to copy values onto the chat. -->
+    <stoop-id id="stoop_identity"></stoop-id>
+  </section>
+
+  <script>
+    /**
+     * Event Listener Setup
+     *
+     * This script demonstrates how to listen to custom events emitted
+     * by dataroom-js components using the component's .on() method.
+     *
+     * We wrap it in a setTimeout to ensure the custom elements have
+     * been defined and connected before we attach listeners.
+     * In production code, prefer using DOMContentLoaded or
+     * customElements.whenDefined().
+     */
+    setTimeout(() => {
+      // Listen for web worker responses from the example component
+      if (typeof example_component !== 'undefined' && example_component.on) {
+        example_component.on('WEB-WORKER-RESPONSE', (data) => {
+          console.log('[Main Thread] Web Worker responded:', data);
+        });
+      }
+
+      // Listen for counter changes
+      if (typeof counter_component !== 'undefined' && counter_component.on) {
+        counter_component.on('count-changed', (data) => {
+          console.log('[Main Thread] Counter changed:', data.count);
+        });
+      }
+    }, 1000);
+  </script>
+</body>
+
+</html>

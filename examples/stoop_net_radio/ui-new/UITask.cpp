@@ -5,6 +5,15 @@
 #ifdef WIFI_SSID
   #include <WiFi.h>
 #endif
+#ifdef STOOP_QR_JOIN
+  #include <qrcode.h>
+  #ifndef DISPLAY_SCALE_X
+    #define DISPLAY_SCALE_X 2.5f // match ST7789LCDDisplay's defaults
+  #endif
+  #ifndef DISPLAY_SCALE_Y
+    #define DISPLAY_SCALE_Y 3.75f
+  #endif
+#endif
 
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
@@ -87,6 +96,9 @@ public:
 class HomeScreen : public UIScreen {
   enum HomePage {
     FIRST,
+#ifdef STOOP_QR_JOIN
+    JOIN,     // scan-to-join QR (renderJoinQR below)
+#endif
     RECENT,
     RADIO,
     BLUETOOTH,
@@ -177,10 +189,73 @@ class HomeScreen : public UIScreen {
     }
   }
 
+#ifdef STOOP_QR_JOIN
+  // Draws the WiFi-join QR code ("WIFI:T:nopass;S:<ssid>;;") white-on-black.
+  //
+  // The code is stamped as an XBM bitmap rather than drawn with scaled
+  // fillRects: the LCD maps one logical pixel to 2.5 physical px horizontally
+  // but 3.75 vertically, so rect-drawn modules land on a fractional grid that
+  // leaves hairline light seams between them — enough to break decoding. The
+  // driver's drawXbm stamps each bitmap pixel on a seamless square physical
+  // grid instead. 3x3 bitmap pixels per module ≈ 9 physical px per module on
+  // the T-Deck's 320x240 panel; modern phone scanners read the inversion fine.
+  void renderJoinQR(DisplayDriver& display) {
+    static QRCode qr;
+    static uint8_t qr_data[79];   // qrcode_getBufferSize(2) is a runtime call;
+                                  // version 2 = 25x25 modules = (625+7)/8 = 79
+    static uint8_t qr_xbm[750];   // 75x75 bits at 10 bytes per row
+    static bool built = false;
+    const int scale = 3;          // xbm pixels per QR module
+    const int bmp = 25 * scale;   // QR version 2 = 25x25 modules
+
+    if (!built) {
+      char qr_text[40];
+      snprintf(qr_text, sizeof(qr_text), "WIFI:T:nopass;S:%s;;", WIFI_SSID);
+      if (strlen(qr_text) > 32) {  // version 2 holds 32 bytes at ECC_LOW
+        display.setTextSize(1);
+        display.setColor(UIColor::primary_txt);
+        display.drawTextCentered(display.width() / 2, 28, "ssid too long for qr");
+        return;
+      }
+      qrcode_initText(&qr, qr_data, 2, ECC_LOW, qr_text);
+
+      memset(qr_xbm, 0, sizeof(qr_xbm));
+      const int stride = (bmp + 7) / 8;  // 10 bytes per row, MSB first
+      for (int j = 0; j < qr.size; j++) {
+        for (int i = 0; i < qr.size; i++) {
+          if (!qrcode_getModule(&qr, i, j)) continue;
+          for (int dy = 0; dy < scale; dy++) {
+            for (int dx = 0; dx < scale; dx++) {
+              int px = i * scale + dx, py = j * scale + dy;
+              qr_xbm[py * stride + px / 8] |= 0x80 >> (px & 7);
+            }
+          }
+        }
+      }
+      built = true;
+    }
+
+    // white-on-black: the full-screen dark backdrop doubles as the quiet zone
+    display.setColor(UIColor::primary_txt);   // black on the LCD palette
+    display.fillRect(0, 0, display.width(), display.height());
+    display.setColor(UIColor::window_bkg);    // white
+    // center the bitmap on the physical panel: it renders DISPLAY_SCALE_X
+    // (2.5) physical px per bitmap pixel in both axes, so 75 px ≈ 187 phys px
+    float bmp_phys = (float)bmp * DISPLAY_SCALE_X;
+    int x0 = (int)(((float)display.width() * DISPLAY_SCALE_X - bmp_phys) / 2 / DISPLAY_SCALE_X);
+    int y0 = (int)(((float)display.height() * DISPLAY_SCALE_Y - bmp_phys) / 2 / DISPLAY_SCALE_Y);
+    display.drawXbm(x0, y0, qr_xbm, bmp, bmp);
+  }
+#endif
+
 public:
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
-       _shutdown_init(false), sensors_lpp(200) {  }
+       _shutdown_init(false), sensors_lpp(200) {
+#ifdef STOOP_QR_JOIN
+    _page = HomePage::JOIN;  // a public node leads with the scan-to-join screen
+#endif
+  }
 
   void poll() override {
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
@@ -242,6 +317,10 @@ public:
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
         display.drawTextCentered(display.width() / 2, 43, tmp);
       }
+#ifdef STOOP_QR_JOIN
+    } else if (_page == HomePage::JOIN) {
+      renderJoinQR(display);
+#endif
     } else if (_page == HomePage::RECENT) {
       the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
       display.setColor(UIColor::primary_txt);

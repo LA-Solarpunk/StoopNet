@@ -1,0 +1,70 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "description": "Stoop Net Front End",
+  "main": "dist/index.js",
+  "type": "module",
+  "author": "LNSY <lnsy@crashspace.org>",
+  "license": "Unlicense",
+  "keywords": [
+    "web-workers",
+    "webassembly",
+    "custom-elements",
+    "vanilla-js",
+    "dataroom-js",
+    "webpack",
+    "boilerplate"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lnsy-dev/web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lnsy-dev/web/issues"
+  },
+  "homepage": "https://github.com/lnsy-dev/web#readme",
+  "files": [
+    "dist/",
+    "src/",
+    "styles/",
+    "index.js",
+    "index.css",
+    "index.html"
+  ],
+  "scripts": {
+    "test": "playwright test",
+    "validate:html": "html-validate index.html",
+    "test:ui": "playwright test --ui",
+    "test:prod": "npm run build && playwright test --project=production",
+    "test:unit": "vitest run",
+    "start": "webpack serve",
+    "build": "NODE_ENV=production webpack build",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "dataroom-js": "^1.0.1",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@swc/core": "^1.9.3",
+    "copy-webpack-plugin": "^14.0.0",
+    "css-loader": "^7.1.2",
+    "cssnano": "^8.0.1",
+    "dotenv": "17.4.2",
+    "html-validate": "^9.5.0",
+    "html-webpack-plugin": "^5.6.7",
+    "js-yaml": "^5.4.2",
+    "marked": "^18.0.14",
+    "mini-css-extract-plugin": "^2.9.2",
+    "minimizer-webpack-plugin": "^5.11.0",
+    "postcss": "^8.5.15",
+    "postcss-loader": "^8.2.0",
+    "style-loader": "^4.0.0",
+    "swc-loader": "^0.2.6",
+    "vitest": "^3.2.4",
+    "webpack": "^5.107.0",
+    "webpack-cli": "^7.0.2",
+    "webpack-dev-server": "^5.2.4"
+  }
+}
