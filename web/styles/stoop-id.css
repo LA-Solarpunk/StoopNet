@@ -1,0 +1,112 @@
+/*
+  Stoop ID — the neighborhood identity card.
+
+  Visual language matches the Stoop node's captive-portal pages: warm
+  porch-light amber on cream. All rules are scoped under .stoop-id-card so
+  the card can live on any page without leaking styles.
+*/
+
+.stoop-id-card {
+  --stoop-bg: #fbf3e7;
+  --stoop-card: #ffffff;
+  --stoop-ink: #2b2320;
+  --stoop-muted: #6b5f56;
+  --stoop-amber: #d98c2b;
+  --stoop-amber-dark: #b8701c;
+  --stoop-line: #ecdfc9;
+
+  background: var(--stoop-card);
+  border: 1px solid var(--stoop-line);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin: 0 0 18px;
+  box-shadow: 0 2px 10px rgba(60, 40, 10, 0.05);
+  color: var(--stoop-ink);
+  max-width: 560px;
+}
+
+.stoop-id-title {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+  color: var(--stoop-amber-dark);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.stoop-id-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stoop-id-form label {
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.stoop-id-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--stoop-line);
+  font-size: 1rem;
+  background: var(--stoop-bg);
+  color: var(--stoop-ink);
+}
+
+.stoop-id-form input:focus {
+  outline: 2px solid var(--stoop-amber);
+}
+
+.stoop-id-hint {
+  color: var(--stoop-muted);
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+
+.stoop-id-save,
+.stoop-id-forget {
+  margin-top: 12px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--stoop-amber);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.stoop-id-forget {
+  background: var(--stoop-card);
+  color: var(--stoop-amber-dark);
+  border: 1px solid var(--stoop-line);
+}
+
+.stoop-id-save:hover,
+.stoop-id-forget:hover {
+  background: var(--stoop-amber-dark);
+  color: #fff;
+}
+
+.stoop-id-save:disabled {
+  background: #e2c193;
+  cursor: default;
+}
+
+.stoop-id-signed-in {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.stoop-id-signed-in strong {
+  color: var(--stoop-amber-dark);
+}
+
+.stoop-id-status {
+  margin: 10px 0 0;
+  min-height: 1.2em;
+  font-size: 0.9rem;
+  color: var(--stoop-amber-dark);
+}
