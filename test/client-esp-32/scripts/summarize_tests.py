@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Summarize a stoop-tester capture: print each SELFTEST line's verdict.
 
-    summarize_tests.py logs/flow_20260918_124500.log
+    summarize_tests.py logs/session_flow_20260918_131509.log
 
 Exit code 0 only when the suite summary line
     SELFTEST|suite=stoop_tester|failures=0|result=PASS

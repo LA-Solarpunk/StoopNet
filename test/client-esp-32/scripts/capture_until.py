@@ -26,8 +26,6 @@ def main():
     ap.add_argument("--stop", help="regex; stop reading once it matches a line")
     ap.add_argument("--timeout", type=float, default=120.0,
                     help="give up after this many seconds (default 120)")
-    ap.add_argument("--quiet-exit", type=float, default=8.0,
-                    help="also stop after this many silent seconds (0=never)")
     args = ap.parse_args()
 
     import serial
@@ -52,17 +50,12 @@ def main():
         ser.rts = False
 
     deadline = time.time() + args.timeout
-    quiet = 0.0
     matched = False
     try:
         while time.time() < deadline:
             chunk = ser.read(512)
             if not chunk:
-                quiet += 0.25
-                if args.quiet_exit and quiet >= args.quiet_exit and matched:
-                    break  # pattern already seen and the device went quiet
                 continue
-            quiet = 0.0
             text = chunk.decode("utf-8", errors="replace")
             sys.stdout.write(text)
             sys.stdout.flush()

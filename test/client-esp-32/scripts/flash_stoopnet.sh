@@ -25,22 +25,9 @@ MAIN_REPO="$(cd "$ROOT/../.." && pwd)"       # the StoopNet (MeshCore fork) repo
 
 HELTEC_ENV="${HELTEC_ENV:-heltec_v4_r8_stoop_radio}"
 
-# --- resolve PlatformIO + a python that has pyserial (same policy as run.sh)
-if [ -n "${DR_PIO_BIN:-}" ]; then
-    PIO="$DR_PIO_BIN"
-elif command -v pio >/dev/null 2>&1; then
-    PIO="$(command -v pio)"
-else
-    VENV="$HOME/.local/share/venvs/platformio"
-    [ -x "$VENV/bin/pio" ] || { echo "no pio found — run ./scripts/run.sh once to install" >&2; exit 1; }
-    PIO="$VENV/bin/pio"
-fi
-PIO_PY="$(head -1 "$PIO" | sed 's/^#!//')"
-if [ -x "$PIO_PY" ] && "$PIO_PY" -c 'import serial' 2>/dev/null; then
-    PY="$PIO_PY"
-else
-    PY="${DR_PIO_PYTHON:-python3}"
-fi
+# --- resolve PlatformIO + a python that has pyserial
+# shellcheck source=scripts/pio_env.sh
+source "$SCRIPTS/pio_env.sh" || exit 1
 
 if [ $# -gt 0 ]; then
     NODES="$@"

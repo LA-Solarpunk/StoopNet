@@ -211,7 +211,12 @@ class HomeScreen : public UIScreen {
     if (!built) {
       char qr_text[40];
       snprintf(qr_text, sizeof(qr_text), "WIFI:T:nopass;S:%s;;", WIFI_SSID);
-      if (strlen(qr_text) > 32) {  // version 2 holds 32 bytes at ECC_LOW
+      // 32 is the largest byte-mode payload this library's version-2 tables
+      // carry that still decodes (measured, not the ISO/IEC 18004 figure of
+      // 14 -- this fork's ECC tables are roomier). The rig's own Stoop-N SSIDs
+      // come to 25 bytes; the stock "Neighborhood Board (free)" is 43 and is
+      // correctly refused here, since the buffers below are sized for v2 only.
+      if (strlen(qr_text) > 32) {
         display.setTextSize(1);
         display.setColor(UIColor::primary_txt);
         display.drawTextCentered(display.width() / 2, 28, "ssid too long for qr");
@@ -235,7 +240,10 @@ class HomeScreen : public UIScreen {
       built = true;
     }
 
-    // white-on-black: the full-screen dark backdrop doubles as the quiet zone
+    // white-on-black: the full-screen dark backdrop doubles as the quiet zone.
+    // This deliberately paints over the title bar render() drew above -- the QR
+    // is meant to be the whole screen, with no header, since it is the default
+    // page and the display never auto-offs on this build.
     display.setColor(UIColor::primary_txt);   // black on the LCD palette
     display.fillRect(0, 0, display.width(), display.height());
     display.setColor(UIColor::window_bkg);    // white

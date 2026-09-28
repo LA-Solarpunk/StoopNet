@@ -52,9 +52,8 @@ class TestSummarize(unittest.TestCase):
 
 
 class TestPortClassification(unittest.TestCase):
-    def port(self, vid, description):
-        return SimpleNamespace(device="/dev/cu.usbserial-X", vid=vid,
-                               description=description)
+    def port(self, vid, description, device="/dev/cu.usbserial-X"):
+        return SimpleNamespace(device=device, vid=vid, description=description)
 
     def test_heltec_is_silabs_cp210x(self):
         self.assertEqual(fp.classify(self.port(0x10C4, "CP2102 USB to UART")),
@@ -67,12 +66,22 @@ class TestPortClassification(unittest.TestCase):
         self.assertIsNone(fp.classify(self.port(0x0403, "FT230X Basic UART")))
         self.assertIsNone(fp.classify(self.port(None, "Bluetooth-Incoming")))
 
-    def test_first_match_wins(self):
+    def test_ports_of_kind_keeps_every_match_in_path_order(self):
+        # several boards of one kind are told apart by index, so ordering and
+        # non-collapsing are what make NODE2_PORT-style rigs addressable
+        fake = [
+            self.port(0x10C4, "CP2102", "/dev/cu.usbserial-0002"),
+            self.port(0x10C4, "CP2102", "/dev/cu.usbserial-0001"),
+        ]
+        with mock.patch("serial.tools.list_ports.comports", return_value=fake):
+            found = [p.device for p in fp.ports_of_kind("heltec")]
+        self.assertEqual(found, ["/dev/cu.usbserial-0001", "/dev/cu.usbserial-0002"])
+
+    def test_ports_of_kind_excludes_other_kinds(self):
         fake = [self.port(0x10C4, "CP2102"), self.port(0x0403, "M5stack")]
         with mock.patch("serial.tools.list_ports.comports", return_value=fake):
-            self.assertEqual(fp.all_ports(),
-                             {"heltec": "/dev/cu.usbserial-X",
-                              "m5stick": "/dev/cu.usbserial-X"})
+            self.assertEqual([p.device for p in fp.ports_of_kind("m5stick")],
+                             ["/dev/cu.usbserial-X"])
 
 
 if __name__ == "__main__":

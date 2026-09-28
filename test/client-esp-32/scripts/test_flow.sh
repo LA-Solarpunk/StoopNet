@@ -19,28 +19,15 @@ set -uo pipefail
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPTS")"                 # client-esp-32/
-MAIN_REPO="$(cd "$ROOT/.." && pwd)"          # the StoopNet (MeshCore fork) repo
+MAIN_REPO="$(cd "$ROOT/../.." && pwd)"       # the StoopNet (MeshCore fork) repo
 
 HELTEC_ENV="${HELTEC_ENV:-heltec_v4_r8_stoop_radio}"
 AP_WAIT_SECS="${AP_WAIT_SECS:-12}"
 CAPTURE_TIMEOUT="${CAPTURE_TIMEOUT:-150}"
 
-# --- resolve PlatformIO + a python that has pyserial (same policy as run.sh)
-if [ -n "${DR_PIO_BIN:-}" ]; then
-    PIO="$DR_PIO_BIN"
-elif command -v pio >/dev/null 2>&1; then
-    PIO="$(command -v pio)"
-else
-    VENV="$HOME/.local/share/venvs/platformio"
-    [ -x "$VENV/bin/pio" ] || { echo "no pio found — run ./scripts/run.sh once to install" >&2; exit 1; }
-    PIO="$VENV/bin/pio"
-fi
-PIO_PY="$(head -1 "$PIO" | sed 's/^#!//')"
-if [ -x "$PIO_PY" ] && "$PIO_PY" -c 'import serial' 2>/dev/null; then
-    PY="$PIO_PY"
-else
-    PY="${DR_PIO_PYTHON:-python3}"
-fi
+# --- resolve PlatformIO + a python that has pyserial
+# shellcheck source=scripts/pio_env.sh
+source "$SCRIPTS/pio_env.sh" || exit 1
 
 port_of() {
     "$PY" "$SCRIPTS/find_ports.py" --kind "$1" || return 1
@@ -61,8 +48,9 @@ do_flash_tester() {
 
 do_reboot() {
     case "$1" in
-        heltec) "$PY" "$SCRIPTS/reboot_device.py" --port "$2" ;;
-        tester) "$PY" "$SCRIPTS/reboot_device.py" --port "$2" ;;
+        # node and tester reboot identically; the argument only picks the
+        # label used when it fails
+        heltec|tester) "$PY" "$SCRIPTS/reboot_device.py" --port "$2" ;;
         both)
             "$PY" "$SCRIPTS/reboot_device.py" --port "$2" || echo "[flow] WARN: node reboot failed" >&2
             "$PY" "$SCRIPTS/reboot_device.py" --port "$3" || echo "[flow] WARN: tester reboot failed" >&2
@@ -118,13 +106,16 @@ case "$cmd" in
     flow)
         flash_heltec="${STOOP_FLASH_HELTEC:-1}"
         flash_tester="${STOOP_FLASH_TESTER:-1}"
-        heltec="$(port_of heltec)"; tester="$(port_of m5stick)" || exit 1
+        # both ports must resolve before anything is flashed, and each
+        # assignment's exit status is the command substitution's status
+        heltec="$(port_of heltec)" || exit 1
+        tester="$(port_of m5stick)" || exit 1
         echo "[flow] node: $heltec   tester: $tester"
         [ "$flash_heltec" = 1 ] && do_flash_heltec "$heltec"
         [ "$flash_tester" = 1 ] && do_flash_tester "$tester"
         do_test "$heltec" "$tester"
         ;;
     help|*)
-        awk 'NR==1 {next} /^#/ {sub(/^#\s?/, ""); print; next} {exit}' "$SCRIPTS/test_flow.sh"
+        awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "$0" | sed '/^$/d'
         ;;
 esac

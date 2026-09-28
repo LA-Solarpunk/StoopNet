@@ -5,6 +5,11 @@ Examples:
     serial_cmd.py --port /dev/cu.usbserial-X run
     serial_cmd.py --port /dev/cu.usbserial-X status
     serial_cmd.py --list
+
+--port is effectively required in the rig. Without it, find_port() below picks
+by USB vendor, and a StoopNet node's CP210x bridge ranks exactly the same as a
+tester's -- so you would type `post hello` at a node instead of a client. Use
+find_ports.py --kind m5stick (what run.sh cmd does) to pick the right board.
 """
 import argparse
 import sys
@@ -43,6 +48,8 @@ def list_ports():
 
 
 def find_port():
+    """Best-effort pick, for single-board benches. See the module docstring:
+    on the full rig this can return a node's port, so prefer --port."""
     candidates = []
     for p in _usb_ports():
         vid = p.vid and f"{p.vid:04x}"

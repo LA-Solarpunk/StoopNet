@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Analyze a captured dr-esp32 serial log (run.sh capture -> run.sh analyze).
+"""Analyze a captured serial log (run.sh capture -> run.sh analyze).
 
-Understands three kinds of lines:
+Understood line shapes:
   * esp_log lines   "I (12345) tag: message"          (optional host-ts prefix,
                                                       ANSI colors stripped)
   * metrics lines   "I (12345) METRICS: key=value|…"
@@ -11,6 +11,13 @@ The report covers: session span, counts by level/tag, every ERROR/WARN,
 top repeated messages, device restarts, uptime gaps (stalls), a metrics
 time-series summary with heap-trend (leak) detection and self-test results.
 Use --json for machine-readable output.
+
+Scope: this understands esp_log's "I (ms) tag:" prefix. The stoop-tester
+firmware logs as "[ms] stoop-tester: ..." (printf, not esp_log), so its
+captures contain no esp_log lines at all -- those reports come back with the
+selftest section only, which is enough to get a suite verdict. Use
+summarize_tests.py for the tester; this script is for node firmware and for
+mixed captures. Exit code is 1 when any esp_log ERROR is present.
 """
 import argparse
 import json
@@ -184,7 +191,7 @@ def print_report(rep):
     if "error" in rep:
         print(f"!! {rep['error']}")
         return
-    print(f"dr-esp32 log analysis — {rep['file']}")
+    print(f"serial log analysis — {rep['file']}")
     print(f"  lines: {rep['log_lines']} log / {rep['lines_total']} total"
           + (f", device span {rep['device_uptime_span']['span']}" if "device_uptime_span" in rep else ""))
     if "lines_per_device_second" in rep:
@@ -229,7 +236,9 @@ def print_report(rep):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("logfile", help="captured log file (default: newest logs/session_*.log)")
+    ap.add_argument("logfile",
+                    help="capture to analyze; run.sh analyze defaults to the "
+                         "newest logs/session_*.log when omitted there")
     ap.add_argument("--json", action="store_true", help="emit JSON instead of text")
     args = ap.parse_args()
 

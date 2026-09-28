@@ -14,6 +14,13 @@
 // message shows up — the pair is what scripts/mesh_flow.sh drives to prove a
 // message crosses between two StoopNet nodes over the LoRa mesh.
 //
+// Everything below is cooperative on one thread: run_suite(), cmd_post() and
+// cmd_wait() all block in delay()/HTTP for up to AP_WAIT_MS, and poll_console()
+// only runs between them. So a suite in progress will not see further console
+// input, and there is no way to interrupt a wait early. That is deliberate —
+// the host drives the timing — but it means an interactive `wait 600` is not
+// cancellable and a stuck run needs a power cycle.
+//
 // Build/flash/listen: ./scripts/run.sh -e m5stick-tester build|upload|monitor
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -53,7 +60,10 @@ static void led_write(bool on) {}
 // How long to keep scanning for the node's AP before giving up (the Heltec
 // needs ~10 s after its own reset to bring the AP up).
 #define AP_WAIT_MS 90000
-// Serial command that kicks off a suite run (also the boot default).
+// Grace period after boot before the suite starts on its own, so the host's
+// capture is already listening (and can see the boot banner) before the first
+// test line appears. The same effect as the `run` console command, which is
+// how the suite is re-triggered by hand.
 #define AUTOSTART_DELAY_MS 2500
 
 static const char* TAG = "stoop-tester";
@@ -71,7 +81,11 @@ struct TestResult {
     char note[96];
 };
 
-static TestResult s_results[16];
+// Headroom for a full suite (8) plus several one-shot post/wait commands typed
+// by hand. record() drops anything past this silently, and the host's verdict
+// only depends on the suite line, so overflowing loses diagnostics rather than
+// correctness — but keep it above 8 or a bare `run` would truncate itself.
+static TestResult s_results[32];
 static size_t s_result_count = 0;
 static uint32_t s_suite_start_ms = 0;
 static bool s_suite_running = false;
@@ -96,7 +110,13 @@ static void log_line(const char* fmt, ...) {
 }
 
 static void record(const char* name, bool pass, uint32_t ms, const char* fmt, ...) {
-    if (s_result_count >= sizeof(s_results) / sizeof(s_results[0])) return;
+    if (s_result_count >= sizeof(s_results) / sizeof(s_results[0])) {
+        // still emit the line: the host parses stdout, not this array
+        Serial.printf("SELFTEST|name=%s|result=%s|ms=%lu|DROPPED (result table full)\r\n",
+                      name, pass ? "PASS" : "FAIL", (unsigned long)ms);
+        led_blip();
+        return;
+    }
     TestResult& r = s_results[s_result_count++];
     r.name = name;
     r.pass = pass;
@@ -332,9 +352,13 @@ static void cmd_post(const char* text) {
     }
     if (!ensure_wifi()) return;
     PostResult pr = post_message(String(text));
-    record("post", pr.code == 200, pr.ms, pr.code == 200 ? "code=200 queued=%s"
-                                                         : "%s",
-           pr.code == 200 ? text : pr.err.c_str());
+    if (pr.code == 200) {
+        // "accepted" not "delivered": the node has taken it, and whether it
+        // reaches the other nodes is what the receiver's `wait` proves
+        record("post", true, pr.ms, "accepted=%s", text);
+    } else {
+        record("post", false, pr.ms, "%s", pr.err.c_str());
+    }
 }
 
 // one-shot: wait <secs> <text> — poll the board until <text> appears, which

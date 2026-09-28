@@ -8,6 +8,7 @@ on:
       - 'examples/**'
       - 'variants/**'
       - 'platformio.ini'
+      - 'bin/**'
       - '.github/workflows/pr-build-check.yml'
   push:
     branches: [main, dev]
@@ -16,6 +17,7 @@ on:
       - 'examples/**'
       - 'variants/**'
       - 'platformio.ini'
+      - 'bin/**'
       - '.github/workflows/pr-build-check.yml'
 
 jobs:
@@ -29,6 +31,12 @@ jobs:
           - Heltec_v3_companion_radio_ble
           - Heltec_v3_repeater
           - Heltec_v3_room_server
+          # StoopNet: the example firmware this fork adds, on both a mono-OLED
+          # and a color-LCD node. Nothing else in the matrix builds these, and
+          # the T-Deck env in particular carries the STOOP_QR_JOIN screen, so
+          # it only gets compiled if it is listed here.
+          - heltec_v4_r8_stoop_radio
+          - t_deck_stoop_radio
           # nRF52
           - RAK_4631_companion_radio_ble
           - RAK_4631_companion_radio_ethernet

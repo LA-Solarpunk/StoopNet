@@ -9,52 +9,34 @@
 #   ./scripts/run.sh test       host-side test suite (no device needed)
 #   ./scripts/run.sh cmd "..."  send a console command to the tester (run|status|reboot|help)
 #   ./scripts/run.sh detect     list serial ports + common access problems
+#   ./scripts/run.sh envs       list the tester build environments
+#   ./scripts/run.sh install    report where PlatformIO was found
 #   ./scripts/run.sh clean      remove build artifacts
 #
-# StoopNet two-device test flow (Heltec node + M5Stick client):
+# Single-node flow (Heltec node + M5Stick client):
 #   ./scripts/run.sh ports      show where each device is attached
-#   ./scripts/run.sh flow       flash both devices, reboot, run the WiFi suite
+#   ./scripts/run.sh flash-heltec / flash-tester   flash just one of them
+#   ./scripts/run.sh reboot [heltec|tester|both]   reset one or both
 #   ./scripts/run.sh test-flow  re-run the suite without reflashing
-#   ./scripts/run.sh reboot [heltec|tester|both]
+#   ./scripts/run.sh flow       flash both devices, reboot, run the WiFi suite
 #
 # Two-node mesh rig (Stoop-1/Stoop-2 nodes, M5Stick + ESP32-S3 kit clients):
 #   ./scripts/run.sh flash-nodes    flash both StoopNet nodes (APs Stoop-1, Stoop-2)
 #   ./scripts/run.sh flash-clients  flash both test clients (each joins its node)
 #   ./scripts/run.sh mesh-flow      post via one node, verify arrival via the other
 #
+# Any build/upload/monitor command accepts extra PlatformIO arguments, e.g.
+# `run.sh build -e s3-tester` to target the ESP32-S3 client instead of the stick.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV="${DR_PIO_VENV:-$HOME/.local/share/venvs/platformio}"
-PY="$VENV/bin/python"
-PIO="$VENV/bin/pio"
+SCRIPTS="$ROOT/scripts"
 
-ensure_pio() {
-    if [ ! -x "$PIO" ]; then
-        echo "[run] PlatformIO not found — installing into $VENV ..."
-        python3 -m venv "$VENV"
-        "$VENV/bin/pip" install -q -U platformio
-        echo "[run] done."
-    fi
-}
-
-# Prefer an already-installed pio (DR_PIO_BIN, then $PATH); the private venv is
-# the fallback. Host scripts need a python with pyserial — pio's own
-# interpreter carries one, otherwise fall back to (installing) the venv.
-if [ -n "${DR_PIO_BIN:-}" ]; then
-    PIO="$DR_PIO_BIN"
-elif command -v pio >/dev/null 2>&1; then
-    PIO="$(command -v pio)"
-else
-    ensure_pio
-fi
-PIO_PY="$(head -1 "$PIO" | sed 's/^#!//')"
-if [ -x "$PIO_PY" ] && "$PIO_PY" -c 'import serial' >/dev/null 2>&1; then
-    PY="$PIO_PY"
-else
-    ensure_pio
-    PY="$VENV/bin/python"
-fi
+# Prefer an already-installed pio; the private venv is the fallback. Host scripts
+# need a python with pyserial — pio's own interpreter carries one.
+# shellcheck source=scripts/pio_env.sh
+source "$SCRIPTS/pio_env.sh"
 
 latest_log() {
     ls -t "$ROOT"/logs/session_*.log 2>/dev/null | head -n 1 || true
@@ -128,17 +110,22 @@ case "$command" in
         exec "$ROOT/scripts/$script" "$@"
         ;;
     envs)
-        grep -E '^\[env:' "$ROOT/platformio.ini" | tr -d '[]'
+        list_envs "$ROOT/platformio.ini"
         ;;
     clean)
         exec "$PIO" run -t clean
         ;;
     install)
+        # normally done implicitly by pio_env.sh on first use; exposed so you
+        # can warm it up ahead of time and see where things landed
+        source "$SCRIPTS/pio_env.sh" || exit 1
         echo "[run] PlatformIO is ready: $PIO"
+        echo "[run] host python (pyserial): $PY"
         ;;
     help|*)
-        awk 'NR==1 {next} /^#/ {sub(/^#\s?/, ""); print; next} {exit}' "$ROOT/scripts/run.sh"
+        # print this file's header comment block, minus the leading '# '
+        awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "$0" | sed '/^$/d'
         echo
-        echo "Environments: $(grep -E '^\[env:' "$ROOT/platformio.ini" | tr -d '[]' | sed 's/env://' | paste -sd' ')"
+        echo "Environments: $(list_envs "$ROOT/platformio.ini")"
         ;;
 esac

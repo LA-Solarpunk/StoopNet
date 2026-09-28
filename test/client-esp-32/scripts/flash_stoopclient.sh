@@ -16,25 +16,16 @@ SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPTS")"                 # client-esp-32/
 MAIN_REPO="$(cd "$ROOT/../.." && pwd)"       # the StoopNet (MeshCore fork) repo
 
-# --- resolve PlatformIO + a python that has pyserial (same policy as run.sh)
-if [ -n "${DR_PIO_BIN:-}" ]; then
-    PIO="$DR_PIO_BIN"
-elif command -v pio >/dev/null 2>&1; then
-    PIO="$(command -v pio)"
-else
-    VENV="$HOME/.local/share/venvs/platformio"
-    [ -x "$VENV/bin/pio" ] || { echo "no pio found — run ./scripts/run.sh once to install" >&2; exit 1; }
-    PIO="$VENV/bin/pio"
-fi
-PIO_PY="$(head -1 "$PIO" | sed 's/^#!//')"
-if [ -x "$PIO_PY" ] && "$PIO_PY" -c 'import serial' 2>/dev/null; then
-    PY="$PIO_PY"
-else
-    PY="${DR_PIO_PYTHON:-python3}"
-fi
+# --- resolve PlatformIO + a python that has pyserial
+# shellcheck source=scripts/pio_env.sh
+source "$SCRIPTS/pio_env.sh" || exit 1
 
 LABEL="${TESTER_LABEL:-$(git -C "$MAIN_REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)-$(date +%m%d-%H%M)}"
 WHICH="${1:-all}"
+case "$WHICH" in
+    all|m5stick|s3) ;;
+    *) echo "usage: flash_stoopclient.sh [all|m5stick|s3] (got: $WHICH)" >&2; exit 2 ;;
+esac
 
 declare -a FLASHED=()
 FAILED=0
@@ -68,10 +59,6 @@ case "$WHICH" in
         flash_client 2 esp32 "${CLIENT2_ENV:-s3-tester}" \
             "${CLIENT2_PORT:-${STOOP_ESP32_PORT:-}}" "${CLIENT2_SSID:-Stoop-2}"
         ;;
-esac
-case "$WHICH" in
-    all|m5stick|s3) ;;
-    *) echo "usage: flash_stoopclient.sh [all|m5stick|s3] (got: $WHICH)" >&2; exit 2 ;;
 esac
 
 echo

@@ -25,6 +25,14 @@ numbers: `flash_stoopnet.sh 3` flashes only node 3. All nodes must be flashed
 from the same checkout so their `#stoop` channel key and LoRa band match —
 otherwise they can't hear each other.
 
+The T-Deck's QR screen is the one place with a length budget. The QR is pinned
+to version 2, which carries at most **32 bytes** of payload, and
+`WIFI:T:nopass;S:<ssid>;;` spends 18 of them on the wrapper. So the SSID has to
+fit in 14 characters: `Stoop-3` is fine (25 bytes total), but the stock
+`Neighborhood Board (free)` is 43 bytes and the screen shows `ssid too long for
+qr` instead of a code. Any rig that wants the QR should flash short
+`Stoop-N` SSIDs, which is what `flash_stoopnet.sh` does anyway.
+
 Ports: the T-Deck and the ESP32-S3 kit both enumerate as ESP32 native-USB
 devices (VID 303a), so when both are attached the scripts refuse to guess —
 pin the test client with `CLIENT2_PORT` (find_ports.py --list maps them).
@@ -42,7 +50,15 @@ pin the test client with `CLIENT2_PORT` (find_ports.py --list maps them).
 each board by USB identity and pin it with `NODE<i>_PORT` / `CLIENT<i>_PORT`
 (or `STOOP_HELTEC<i>_PORT` / `STOOP_M5_PORT` / `STOOP_ESP32_PORT`); a rig with
 several boards of the same kind needs ports pinned explicitly, since identical
-bridges look alike.
+bridges look alike. The scripts only start flashing after both arguments and
+both ports have resolved, so a typo fails immediately instead of half-way
+through a rig.
+
+Every script resolves PlatformIO and a pyserial-capable Python the same way
+(`scripts/pio_env.sh`): `$DR_PIO_BIN`, then `pio` on `$PATH`, then a private
+venv at `~/.local/share/venvs/platformio` which is installed on demand. Set
+`STOOP_PIO_NOINSTALL=1` to make a missing PlatformIO a hard error instead —
+handy in CI. `run.sh install` reports where both landed.
 
 `mesh_flow.sh` (in `scripts/mesh_flow.sh`) runs the mesh relay test:
 
@@ -103,19 +119,73 @@ for saved sessions — captures from the flows land in `logs/` too.
 
 ## Testing
 
+Two distinct kinds of test live here, and only the first one runs in CI.
+
+### Host-side unit tests — `./scripts/run.sh test`
+
+No hardware, no PlatformIO, no device. 63 tests, ~0.1 s, run with the stdlib
+`unittest` runner against the scripts in this directory:
+
+| spec | covers |
+|---|---|
+| `test_flow_helpers.py` | the `SELFTEST` verdict parser (pass / one failure / no summary / empty capture) and USB-identity → device-kind classification, including the port ordering that `--index` relies on |
+| `test_analyze_logs.py` | the serial-log analyzer: esp_log line shapes, all five levels, ANSI stripping, host-timestamp prefixes, restart and stall detection, heap-trend leak detection, and the `--json` output |
+| `test_serial_cmd.py` | the console CLI: legacy-`ttyS` filtering, vidless ACM ports, vendor-preference port selection, `--wait`/`--quiet` parsing |
+| `test_platformio_config.py` | `platformio.ini` invariants — see below |
+The `platformio.ini` tests are the interesting ones, because they catch a
+whole class of rig failure *before* anything is flashed: the client's join
+parameters (`STOOP_TEST_SSID`, `STOOP_TEST_HOST`) must match the node
+firmware's softAP config, or every suite run fails with "no AP" and you go
+looking for a hardware fault that isn't there. They also pin the LED GPIO
+per board, assert `CDC_ON_BOOT` stays on for the S3 kit (without it the logs
+never reach the host at all), and check the exception decoder is in
+`monitor_filters` so panic backtraces survive into captures.
+
+These run in the `test-rig-host-tests` CI job on every push and PR.
+
+### On-device tests — everything else
+
+`flow`, `test-flow` and `mesh-flow` need the physical rig and are not run in
+CI. They flash, reboot, and read verdicts off the serial console; the exit
+code is 0 only when every direction passed, so they *could* be gated on a
+self-hosted runner with the hardware attached, but nothing does that yet.
+
+To iterate quickly without a rig, the firmware builds standalone:
+
 ```bash
-./scripts/run.sh test
+./scripts/run.sh build -e m5stick-tester   # or s3-tester / esp32-tester
+./scripts/run.sh envs                      # list the three
 ```
 
-Host-side unittest suite (`scripts/tests/`, no device needed): the verdict
-parser, flow port classification, the serial CLI, the log analyzer, and the
-`platformio.ini` invariants (join parameters must match the node firmware's
-softAP config — a mismatch fails the suite before anything gets flashed).
+All three envs pin `espressif32@6.11.0`, the same version the parent repo uses
+for its ESP32 targets, and that pin matters: with a bare
+`platform = espressif32` the resolver floats to the newest release, whose
+arduino-esp32 no longer ships the `m5stick_c` variant that `board = m5stick-c`
+names, and the build fails with `fatal error: pins_arduino.h: No such file or
+directory` before it ever reaches the tester source.
+`test_platformio_config.py` asserts the pin so this cannot regress silently.
+
+## Known gaps
+
+- No CI covers the on-device suites, and no test asserts the T-Deck
+  `t_deck_stoop_radio` env or the QR screen renders.
+- `analyze_logs.py` parses esp_log's `I (ms) tag:` prefix. The tester logs as
+  `[ms] stoop-tester: ...`, so its captures yield the selftest section only.
+  Use `summarize_tests.py` for the tester; `analyze_logs.py` is really for node
+  firmware.
+- `serial_cmd.py` without `--port` picks a board by USB vendor, and a node's
+  CP210x ranks equal to a tester's. On the full rig always pass `--port`
+  (`run.sh cmd` does).
 
 ## Prerequisites
 
 - PlatformIO — auto-installed on first `run.sh` call into
   `~/.local/share/venvs/platformio` if not already on `$PATH`.
+- A Python with `pyserial`. The scripts prefer PlatformIO's own interpreter
+  (it has one) and fall back to `$DR_PIO_PYTHON`, then `python3`. A bare
+  `python3` without pyserial is the usual reason the unit tests fail with
+  `No module named 'serial'` — run them through `./scripts/run.sh test` rather
+  than calling `unittest` yourself.
 - Devices attached over USB (data cables, not charge-only). The M5Stick and
   the ESP32-S3 kit expose different USB identities, so both stay
   auto-detectable; two identical Heltecs are told apart by port order

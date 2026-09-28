@@ -96,6 +96,23 @@ class TestPlatformioIni(unittest.TestCase):
         self.assertIn("esp32_exception_decoder",
                       cfg("env:m5stick-tester", "monitor_filters"))
 
+    def test_platform_is_pinned(self):
+        # A bare `platform = espressif32` floats to the newest release, whose
+        # arduino-esp32 dropped the `m5stick_c` variant that board=m5stick-c
+        # names. The build then dies with "fatal error: pins_arduino.h: No
+        # such file or directory" before any tester code is even reached, and
+        # the error points nowhere near the cause. Every env must pin the same
+        # version the parent repo uses, so the rig and the nodes it tests
+        # build against one framework.
+        expected = "platformio/espressif32@6.11.0"
+        for section in CP.sections():
+            if not section.startswith("env:"):
+                continue
+            self.assertEqual(
+                CP[section]["platform"], expected,
+                f"{section} must pin {expected} (unpinned espressif32 breaks "
+                f"board=m5stick-c)")
+
 
 class TestDevKitEnvs(unittest.TestCase):
     """The dev-kit client envs must be join-compatible with the node too."""

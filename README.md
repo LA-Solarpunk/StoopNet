@@ -48,6 +48,22 @@ This is a PlatformIO project. The current Stoop Net firmware target is `heltec_v
 pio run -e heltec_v4_stoop_radio
 ```
 
+There is a second target for a color-LCD node, the LilyGo T-Deck:
+
+```
+pio run -e t_deck_stoop_radio
+```
+
+It builds the same firmware, but opts into `STOOP_QR_JOIN`, which makes the
+T-Deck's 320x240 screen lead with a scan-to-join QR code for its access point
+instead of the message counter, and keeps the display on (`AUTO_OFF_MILLIS=0`)
+so the code is there without anyone touching the node. The code is stamped as
+an XBM bitmap rather than drawn with scaled rectangles, because the panel
+scales 2.5x horizontally and 3.75x vertically and rect-drawn modules end up on
+a fractional grid with hairline seams that break decoding. The QR is pinned to
+version 2, which caps the SSID at 14 characters — see
+`test/client-esp-32/README.md`.
+
 For active development, `stoop_dev` builds the same firmware with debug logging enabled and uploads plus opens a serial monitor automatically:
 
 ```
@@ -55,6 +71,41 @@ pio run -e stoop_dev
 ```
 
 To make the `stoop` channel private, copy `platformio.local.ini.template` to `platformio.local.ini` (already gitignored) and set your own channel key there.
+
+## Testing
+
+Two layers, and it is worth knowing which one you are running.
+
+**Host-side unit tests** need no hardware and run in CI (`.github/workflows/run-unit-tests.yml`):
+
+```
+pio test -e native -e native_kiss_modem
+```
+
+**The ESP32 test rig** (`test/client-esp-32/`) is a set of small boards that
+verify a real node end-to-end: they join a node's access point, exercise the
+captive portal and web API over HTTP, and print machine-parsable
+`SELFTEST|name=...|result=PASS|FAIL` lines that the host scripts turn into a
+verdict. With two nodes and two clients attached at once, `mesh_flow.sh` also
+proves a post crosses from one node to the other over the LoRa mesh.
+
+```
+cd test/client-esp-32
+./scripts/run.sh test          # host-side suite, no device needed (63 tests)
+./scripts/run.sh ports         # where each board is attached
+./scripts/run.sh flash-nodes   # flash both nodes, APs Stoop-1 / Stoop-2
+./scripts/run.sh flash-clients # flash both test clients
+./scripts/run.sh mesh-flow     # post via one node, verify it via the other
+```
+
+The rig's own Python unit tests — the verdict parser, USB device
+classification, the serial CLI, the log analyzer, and the `platformio.ini`
+invariants that keep the clients join-compatible with the node firmware — run
+in CI on every push via `test-rig-host-tests.yml`. The on-device suites need
+the physical hardware and are **not** covered by CI.
+
+Full rig documentation, including what each on-device test checks and the
+known gaps, is in [`test/client-esp-32/README.md`](test/client-esp-32/README.md).
 
 ## Repo layout
 
@@ -65,6 +116,8 @@ examples/stoop_net_radio/
   main.cpp             setup/loop, WiFi AP, captive portal, HTTP routes
   MyMesh.cpp/.h         mesh behavior for this node
   RateLimiter.cpp/.h    the two token buckets described above
+  ui-new/               on-device UI; STOOP_QR_JOIN adds the scan-to-join
+                        QR code on the T-Deck build
   web/                  the HTML and JS served to phones
 test/client-esp-32/     test clients (M5StickC, ESP32-S3 kit) + scripts to flash
                         the two-node rig (APs Stoop-1, Stoop-2) and verify

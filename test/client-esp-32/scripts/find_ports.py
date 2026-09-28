@@ -47,17 +47,6 @@ def classify(port):
     return None
 
 
-def all_ports():
-    import serial.tools.list_ports
-
-    found = {}
-    for p in serial.tools.list_ports.comports():
-        kind = classify(p)
-        if kind and kind not in found:  # first match wins; override via env/--port
-            found[kind] = p.device
-    return found
-
-
 def ports_of_kind(kind):
     """Every port of one kind, ordered by port path (index N = Nth entry)."""
     import serial.tools.list_ports
