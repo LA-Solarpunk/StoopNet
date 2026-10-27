@@ -1,0 +1,6 @@
+# stoop_keygen.py
+argon2-cffi>=23
+pynacl>=1.5
+
+# stoop_channel_keygen.py: stdlib only. `pip install qrcode` to also get an
+# ASCII QR code printed for the channel's share/scan link (optional).
