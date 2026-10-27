@@ -70,6 +70,69 @@
   }
   .result.ok{ color: var(--green); }
   .result.err{ color: var(--red); }
+
+  h2{ font-size: 1.15rem; margin: 32px 0 4px; }
+  .card + h2 { margin-top: 32px; }
+  textarea{
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    font-size: 1rem;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--ink);
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 4px;
+  }
+  textarea:focus{ outline: 2px solid var(--amber); }
+  input[type=datetime-local]{
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    font-size: 1rem;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--ink);
+    margin-bottom: 16px;
+  }
+  input[type=datetime-local]:focus{ outline: 2px solid var(--amber); }
+  .byte-count{
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+  .byte-count.over{ color: var(--red); font-weight: 600; }
+  #publishBtn{ width: 100%; background: var(--amber); }
+  #publishBtn:active:not(:disabled){ background: var(--amber-dark); }
+  .spinner{
+    display: none;
+    width: 1em;
+    height: 1em;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    margin: 0 auto;
+    animation: spin 0.7s linear infinite;
+  }
+  .spinner.active{ display: block; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  .alert-list{ list-style: none; margin: 8px 0 0; padding: 0; }
+  .alert-item{
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .alert-item time{ display: block; color: var(--muted); font-size: 0.78rem; margin-top: 4px; }
+  .empty{ color: var(--muted); font-size: 0.9rem; }
 </style>
 </head>
 <body>
@@ -88,7 +151,192 @@
 
     <p class="result" id="result"></p>
   </div>
+
+  <h2>Publish an alert</h2>
+  <p class="tagline">Signed locally in your browser with your admin passphrase &mdash; the passphrase itself never leaves this page.</p>
+
+  <div class="card">
+    <label for="body">Alert text</label>
+    <textarea id="body" maxlength="400" placeholder="What should people see?"></textarea>
+    <p class="byte-count" id="byteCount">0/95 bytes</p>
+
+    <label for="posted">Posted</label>
+    <input type="datetime-local" id="posted">
+
+    <label for="passphrase">Admin passphrase</label>
+    <input type="password" id="passphrase" autocomplete="off">
+
+    <button id="publishBtn" disabled>
+      <span id="publishLabel">Publish</span>
+      <span class="spinner" id="publishSpinner"></span>
+    </button>
+
+    <p class="result" id="publishResult"></p>
+  </div>
+
+  <h2>Recent alerts</h2>
+  <div class="card">
+    <ul class="alert-list" id="alertList"><li class="empty">Loading&hellip;</li></ul>
+  </div>
 </div>
+
+<script type="module">
+  import { argon2id } from '/vendor/argon2.js';
+  import { sha512 } from '/vendor/sha2.js';
+  import * as ed from '/vendor/ed25519.js';
+
+  // the default async API needs crypto.subtle, which browsers only expose on
+  // secure contexts (HTTPS/localhost) -- this site is plain HTTP by design,
+  // so use the sync API with sha512 wired in from @noble/hashes instead
+  ed.hashes.sha512 = sha512;
+
+  const KDF_SALT = 'stoop-admin-v1';
+  const KDF_OPTS = { t: 3, m: 65536, p: 1, dkLen: 32 };
+
+  const ALERT_VER = 1;
+  const ALERT_TYPE = 0x10;
+  const BODY_LEN = 95;
+  const SIGNED_LEN = 1 + 1 + 4 + BODY_LEN; // 101
+  const PAYLOAD_LEN = SIGNED_LEN + 64; // 165
+
+  function toHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function deriveSeed(passphrase) {
+    // yield one tick first so the spinner actually paints before this
+    // blocks the main thread -- ~1s on a phone is expected and intentional
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return argon2id(passphrase.normalize('NFC'), KDF_SALT, KDF_OPTS);
+  }
+
+  window.__stoopKeygenSelfTest = async function() {
+    const passphrase = 'stoop-selftest-do-not-use';
+    const seed = await deriveSeed(passphrase);
+    const pubkey = ed.getPublicKey(seed);
+    const result = {
+      passphrase,
+      seed_hex: toHex(seed),
+      pubkey_hex: toHex(pubkey),
+    };
+    console.log('stoop_keygen.py --selftest should print the same seed/pubkey hex:', result);
+    seed.fill(0);
+    return result;
+  };
+
+  const bodyInput = document.getElementById('body');
+  const postedInput = document.getElementById('posted');
+  const passphraseInput = document.getElementById('passphrase');
+  const byteCountEl = document.getElementById('byteCount');
+  const publishBtn = document.getElementById('publishBtn');
+  const publishLabel = document.getElementById('publishLabel');
+  const publishSpinner = document.getElementById('publishSpinner');
+  const publishResultEl = document.getElementById('publishResult');
+  const alertListEl = document.getElementById('alertList');
+
+  function nowForInput() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  postedInput.value = nowForInput();
+
+  function bodyBytes() {
+    return new TextEncoder().encode(bodyInput.value);
+  }
+
+  function updatePublishState() {
+    const len = bodyBytes().length;
+    byteCountEl.textContent = `${len}/${BODY_LEN} bytes`;
+    byteCountEl.classList.toggle('over', len > BODY_LEN);
+
+    const postedValid = postedInput.value !== '' && !isNaN(new Date(postedInput.value).getTime());
+    const ok = len > 0 && len <= BODY_LEN && postedValid && passphraseInput.value.length > 0;
+    publishBtn.disabled = !ok;
+  }
+  bodyInput.addEventListener('input', updatePublishState);
+  postedInput.addEventListener('input', updatePublishState);
+  passphraseInput.addEventListener('input', updatePublishState);
+  updatePublishState();
+
+  function renderAlerts(alerts) {
+    if (!alerts.length) {
+      alertListEl.innerHTML = '<li class="empty">No alerts yet.</li>';
+      return;
+    }
+    alertListEl.innerHTML = alerts.map(a => {
+      const when = new Date(a.posted * 1000).toLocaleString();
+      const body = a.body.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      return `<li class="alert-item">${body}<time>${when}</time></li>`;
+    }).join('');
+  }
+
+  async function loadAlerts() {
+    try {
+      const res = await fetch('/api/alerts');
+      if (res.ok) renderAlerts(await res.json());
+    } catch (e) {
+      alertListEl.innerHTML = '<li class="empty">Could not load alerts.</li>';
+    }
+  }
+  loadAlerts();
+
+  async function publish() {
+    publishBtn.disabled = true;
+    publishLabel.style.display = 'none';
+    publishSpinner.classList.add('active');
+    publishResultEl.textContent = '';
+    publishResultEl.className = 'result';
+
+    const passphrase = passphraseInput.value;
+    let seed;
+    try {
+      seed = await deriveSeed(passphrase);
+
+      const payload = new Uint8Array(PAYLOAD_LEN);
+      payload[0] = ALERT_VER;
+      payload[1] = ALERT_TYPE;
+
+      const postedSec = Math.floor(new Date(postedInput.value).getTime() / 1000);
+      payload[2] = (postedSec >>> 24) & 0xFF;
+      payload[3] = (postedSec >>> 16) & 0xFF;
+      payload[4] = (postedSec >>> 8) & 0xFF;
+      payload[5] = postedSec & 0xFF;
+
+      payload.set(bodyBytes().slice(0, BODY_LEN), 6);
+
+      const signed = payload.slice(0, SIGNED_LEN);
+      const sig = ed.sign(signed, seed);
+      payload.set(sig, SIGNED_LEN);
+
+      const res = await fetch('/api/alerts', {
+        method: 'POST',
+        body: new URLSearchParams({ payload: toHex(payload) })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.ok) {
+        publishResultEl.textContent = 'Published.';
+        publishResultEl.className = 'result ok';
+        bodyInput.value = '';
+        loadAlerts();
+      } else {
+        publishResultEl.textContent = data.reason || 'Publish failed.';
+        publishResultEl.className = 'result err';
+      }
+    } catch (e) {
+      publishResultEl.textContent = 'Publish failed.';
+      publishResultEl.className = 'result err';
+    } finally {
+      if (seed) seed.fill(0);
+      passphraseInput.value = '';
+      publishLabel.style.display = '';
+      publishSpinner.classList.remove('active');
+      updatePublishState();
+    }
+  }
+  publishBtn.addEventListener('click', publish);
+</script>
 
 <script>
   const passwordInput = document.getElementById('password');

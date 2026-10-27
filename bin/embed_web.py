@@ -1,8 +1,8 @@
 Import("env")
 
-"""This program goes through the web/ directory and generates a C header file 
-containing all the HTML files as gzipped byte arrays.  This allows the HTML to
-be embedded in the firmware binary, so that it can be served by the device without
+"""This program goes through the web/ directory and generates a C header file
+containing all the HTML and JS files as gzipped byte arrays.  This allows them to
+be embedded in the firmware binary, so that they can be served by the device without
 needing an external filesystem.
 
 This code was AI generated, but human reviewed and edited.
@@ -35,9 +35,9 @@ else:
             print(f"[embed_web] {web_opt} not found, skipping")
             return
 
-        files = sorted(WEB_DIR.rglob("*.html"))
+        files = sorted({p for ext in ("*.html", "*.js") for p in WEB_DIR.rglob(ext)})
         if not files:
-            print(f"[embed_web] no .html under {web_opt}, skipping")
+            print(f"[embed_web] no .html/.js under {web_opt}, skipping")
             return
 
         lines = [
@@ -51,23 +51,23 @@ else:
         seen = {}
         for path in files:
             rel = path.relative_to(WEB_DIR)
-            name = ident(rel)
-            if name in seen:
+            var = f"{ident(rel)}_{path.suffix.lstrip('.').upper()}_GZ"
+            if var in seen:
                 raise ValueError(
-                    f"web asset collision: {rel} and {seen[name]} both -> {name}"
+                    f"web asset collision: {rel} and {seen[var]} both -> {var}"
                 )
-            seen[name] = rel
+            seen[var] = rel
 
             gz = gzip.compress(path.read_bytes(), compresslevel=9, mtime=0)
             body = ",".join(str(b) for b in gz)
 
             lines += [
                 f"// {rel.as_posix()}  ({path.stat().st_size} -> {len(gz)} gzipped)",
-                f"const uint8_t {name}_HTML_GZ[] = {{{body}}};",
-                f"const size_t {name}_HTML_GZ_LEN = {len(gz)};",
+                f"const uint8_t {var}[] = {{{body}}};",
+                f"const size_t {var}_LEN = {len(gz)};",
                 "",
             ]
-            print(f"[embed_web] {rel.as_posix()} -> {name}_HTML_GZ ({len(gz)} bytes)")
+            print(f"[embed_web] {rel.as_posix()} -> {var} ({len(gz)} bytes)")
 
         new = "\n".join(lines)
         if not OUT.exists() or OUT.read_text() != new:
