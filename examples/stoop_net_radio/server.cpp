@@ -81,48 +81,36 @@ void configureServer() {
   static const char* collected_headers[] = { STOOP_SESSION_HEADER };
   server.collectHeaders(collected_headers, 1);
 
-  auto serveIndex = [](){
-    WIFI_DEBUG_PRINTLN("Serving index.html: host=%s uri=%s", server.hostHeader().c_str(), server.uri().c_str());
-    server.sendHeader("Content-Encoding", "gzip");
-    server.send_P(200, "text/html", (const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN);
+  struct GzAsset { const char* uri; const uint8_t* data; size_t len; };
+
+  static const GzAsset html_pages[] = {
+    { "/",            INDEX_HTML_GZ,  INDEX_HTML_GZ_LEN },
+    { "/index.html",  INDEX_HTML_GZ,  INDEX_HTML_GZ_LEN },
+    { "/chat.html",   CHAT_HTML_GZ,   CHAT_HTML_GZ_LEN },
+    { "/stoop.html",  STOOP_HTML_GZ,  STOOP_HTML_GZ_LEN },
+    { "/admin",       ADMIN_HTML_GZ,  ADMIN_HTML_GZ_LEN },
+    { "/alerts.html", ALERTS_HTML_GZ, ALERTS_HTML_GZ_LEN },
+
+    // Captive portals for various platforms
+    { "/generate_204",              INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // Android / Chrome
+    { "/gen_204",                   INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // older Android
+    { "/hotspot-detect.html",       INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // iOS / macOS
+    { "/library/test/success.html", INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // older iOS / macOS
+    { "/connecttest.txt",           INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // Windows
+    { "/ncsi.txt",                  INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // Windows (older NCSI)
+    { "/success.txt",               INDEX_HTML_GZ, INDEX_HTML_GZ_LEN }, // Firefox
   };
-  server.on("/", HTTP_GET, serveIndex);
-  server.on("/index.html", HTTP_GET, serveIndex);
-
-  // Captive portals for various platforms
-  server.on("/generate_204", HTTP_GET, serveIndex);           // Android / Chrome
-  server.on("/gen_204", HTTP_GET, serveIndex);                // older Android
-  server.on("/hotspot-detect.html", HTTP_GET, serveIndex);    // iOS / macOS
-  server.on("/library/test/success.html", HTTP_GET, serveIndex); // older iOS / macOS
-  server.on("/connecttest.txt", HTTP_GET, serveIndex);        // Windows
-  server.on("/ncsi.txt", HTTP_GET, serveIndex);               // Windows (older NCSI)
-  server.on("/success.txt", HTTP_GET, serveIndex);            // Firefox
-
-  server.on("/chat.html", HTTP_GET, [](){
-    WIFI_DEBUG_PRINTLN("Serving chat.html");
-    server.sendHeader("Content-Encoding", "gzip");
-    server.send_P(200, "text/html", (const char*)CHAT_HTML_GZ, CHAT_HTML_GZ_LEN);
-  });
-  server.on("/stoop.html", HTTP_GET, [](){
-    WIFI_DEBUG_PRINTLN("Serving stoop.html");
-    server.sendHeader("Content-Encoding", "gzip");
-    server.send_P(200, "text/html", (const char*)STOOP_HTML_GZ, STOOP_HTML_GZ_LEN);
-  });
-  server.on("/admin", HTTP_GET, [](){
-    WIFI_DEBUG_PRINTLN("Serving admin.html");
-    server.sendHeader("Content-Encoding", "gzip");
-    server.send_P(200, "text/html", (const char*)ADMIN_HTML_GZ, ADMIN_HTML_GZ_LEN);
-  });
-  server.on("/alerts.html", HTTP_GET, [](){
-    WIFI_DEBUG_PRINTLN("Serving alerts.html");
-    server.sendHeader("Content-Encoding", "gzip");
-    server.send_P(200, "text/html", (const char*)ALERTS_HTML_GZ, ALERTS_HTML_GZ_LEN);
-  });
+  for (auto& page : html_pages) {
+    server.on(page.uri, HTTP_GET, [page](){
+      WIFI_DEBUG_PRINTLN("Serving %s: host=%s", page.uri, server.hostHeader().c_str());
+      server.sendHeader("Content-Encoding", "gzip");
+      server.send_P(200, "text/html", (const char*)page.data, page.len);
+    });
+  }
 
   // vendored crypto libraries admin.html's alert-signing flow needs (no
   // internet access at a deployed node, so these ship inside the firmware
   // too -- see web/vendor/VENDORED.md)
-  struct GzAsset { const char* uri; const uint8_t* data; size_t len; };
   static const GzAsset vendor_assets[] = {
     { "/vendor/ed25519.js", VENDOR_ED25519_JS_GZ, VENDOR_ED25519_JS_GZ_LEN },
     { "/vendor/argon2.js",  VENDOR_ARGON2_JS_GZ,  VENDOR_ARGON2_JS_GZ_LEN },
