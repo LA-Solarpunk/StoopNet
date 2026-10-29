@@ -10,6 +10,13 @@
 #define STOOP_CHANNEL_PSK PUBLIC_GROUP_PSK
 #endif
 
+// name of the admin alerts channel. Deliberately public (PUBLIC_GROUP_PSK) --
+// authenticity comes from the STOOP_ADMIN_PUBKEY signature, not channel secrecy
+#ifndef STOOP_ADMIN_CHANNEL
+#define STOOP_ADMIN_CHANNEL "#stoop-alerts"
+#endif
+#define STOOP_ALERT_CHANNEL_PSK "MRlRXqbpzFM8RYX0Q4ZyhA==" 
+
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
 #define CMD_SEND_CHANNEL_TXT_MSG      3
@@ -567,7 +574,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 
   MESH_DEBUG_PRINTLN("onChannelMessageRecv: channel_idx=%d, path_len=%d, timestamp=%u, text='%s'",
                      channel_idx, path_len, timestamp, text);
-  logStoopMsg(timestamp, text);
+                     
+  if (channel_idx == stoop_channel_idx) {
+    logStoopMsg(timestamp, text);
+  }
 
   out_frame[i++] = TXT_TYPE_PLAIN;
   memcpy(&out_frame[i], &timestamp, 4);
@@ -608,8 +618,35 @@ void MyMesh::logStoopMsg(uint32_t timestamp, const char* text) {
   stoop_log_count++;
 }
 
+void MyMesh::logAlert(const StoopAlert& alert) {
+  alert_log[alert_log_count % ALERT_LOG_SIZE] = alert;
+  alert_log_count++;
+}
+
+StoopAlertVerifyResult MyMesh::publishAlert(const uint8_t* payload, size_t len) {
+  StoopAlert alert;
+  StoopAlertVerifyResult result = verifyStoopAlert(payload, len, alert);
+  if (result != StoopAlertVerifyResult::OK) return result;
+
+  logAlert(alert);
+
+  ChannelDetails channel;
+  if (getChannel(admin_channel_idx, channel)) {
+    sendGroupData(channel.channel, NULL, OUT_PATH_UNKNOWN, STOOP_ALERT_DATA_TYPE, payload, (int)len);
+  }
+  return StoopAlertVerifyResult::OK;
+}
+
 void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint16_t data_type,
                                const uint8_t *data, size_t data_len) {
+  if (data_type == STOOP_ALERT_DATA_TYPE) {
+    StoopAlert alert;
+    if (verifyStoopAlert(data, data_len, alert) == StoopAlertVerifyResult::OK) {
+      logAlert(alert);
+    }
+    return;
+  }
+
   if (data_len > MAX_CHANNEL_DATA_LENGTH) {
     MESH_DEBUG_PRINTLN("onChannelDataRecv: dropping payload_len=%d exceeds frame limit=%d",
                        (uint32_t)data_len, (uint32_t)MAX_CHANNEL_DATA_LENGTH);
@@ -989,7 +1026,14 @@ void MyMesh::begin(bool has_display) {
   resetContacts();
   _store->loadContacts(this);
   bootstrapRTCfromContacts();
-  addChannel("#stoop", STOOP_CHANNEL_PSK); // pre-configure the default #stoop channel; PSK set at compile time
+  ChannelDetails* stoop_channel = addChannel("#stoop", STOOP_CHANNEL_PSK); // pre-configure the default #stoop channel; PSK set at compile time
+  if (stoop_channel != NULL) {
+    stoop_channel_idx = findChannelIdx(stoop_channel->channel);
+  }
+  ChannelDetails* admin_channel = addChannel(STOOP_ADMIN_CHANNEL, STOOP_ALERT_CHANNEL_PSK);
+  if (admin_channel != NULL) {
+    admin_channel_idx = findChannelIdx(admin_channel->channel);
+  }
   //_store->loadChannels(this);
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);

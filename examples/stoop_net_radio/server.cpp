@@ -6,6 +6,7 @@
 #include <helpers/esp32/SerialWifiInterface.h> // WIFI_DEBUG_PRINTLN, pulls in WiFi.h
 #include <helpers/MultiSerialInterface.h>
 #include "MyMesh.h"
+#include "StoopAlert.h"
 #include "wifi_manager.h" // server, rate_limiter, wifiClientModeActive()
 #include <web_assets.h>
 #include <ElegantOTA.h>
@@ -86,6 +87,7 @@ void configureServer() {
     server.send_P(200, "text/html", (const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN);
   };
   server.on("/", HTTP_GET, serveIndex);
+  server.on("/index.html", HTTP_GET, serveIndex);
 
   // Captive portals for various platforms
   server.on("/generate_204", HTTP_GET, serveIndex);           // Android / Chrome
@@ -111,6 +113,32 @@ void configureServer() {
     server.sendHeader("Content-Encoding", "gzip");
     server.send_P(200, "text/html", (const char*)ADMIN_HTML_GZ, ADMIN_HTML_GZ_LEN);
   });
+  server.on("/alerts.html", HTTP_GET, [](){
+    WIFI_DEBUG_PRINTLN("Serving alerts.html");
+    server.sendHeader("Content-Encoding", "gzip");
+    server.send_P(200, "text/html", (const char*)ALERTS_HTML_GZ, ALERTS_HTML_GZ_LEN);
+  });
+
+  // vendored crypto libraries admin.html's alert-signing flow needs (no
+  // internet access at a deployed node, so these ship inside the firmware
+  // too -- see web/vendor/VENDORED.md)
+  struct GzAsset { const char* uri; const uint8_t* data; size_t len; };
+  static const GzAsset vendor_assets[] = {
+    { "/vendor/ed25519.js", VENDOR_ED25519_JS_GZ, VENDOR_ED25519_JS_GZ_LEN },
+    { "/vendor/argon2.js",  VENDOR_ARGON2_JS_GZ,  VENDOR_ARGON2_JS_GZ_LEN },
+    { "/vendor/blake2.js",  VENDOR_BLAKE2_JS_GZ,  VENDOR_BLAKE2_JS_GZ_LEN },
+    { "/vendor/sha2.js",    VENDOR_SHA2_JS_GZ,    VENDOR_SHA2_JS_GZ_LEN },
+    { "/vendor/utils.js",   VENDOR_UTILS_JS_GZ,   VENDOR_UTILS_JS_GZ_LEN },
+    { "/vendor/_blake.js",  VENDOR_BLAKE_JS_GZ,   VENDOR_BLAKE_JS_GZ_LEN },
+    { "/vendor/_md.js",     VENDOR_MD_JS_GZ,      VENDOR_MD_JS_GZ_LEN },
+    { "/vendor/_u64.js",    VENDOR_U64_JS_GZ,     VENDOR_U64_JS_GZ_LEN },
+  };
+  for (auto& asset : vendor_assets) {
+    server.on(asset.uri, HTTP_GET, [asset](){
+      server.sendHeader("Content-Encoding", "gzip");
+      server.send_P(200, "application/javascript", (const char*)asset.data, asset.len);
+    });
+  }
 
   // enables/disables interface_manager (BLE/USB/WiFi companion interfaces)
   // when given the correct ADMIN_PASSWORD
@@ -135,6 +163,64 @@ void configureServer() {
     json += interface_manager.isEnabled() ? "true" : "false";
     json += "}";
     server.send(200, "application/json", json);
+  });
+
+  // returns admin alerts sorted newest-first: [{"posted":123,"body":"..."}]
+  server.on("/api/alerts", HTTP_GET, [](){
+    int count = the_mesh.alert_log_count;
+    int n = count < MyMesh::ALERT_LOG_SIZE ? count : MyMesh::ALERT_LOG_SIZE;
+    int start = count - n;
+
+    // small (<=32 entries), so an O(n^2) sort-by-posted-descending is fine;
+    // insertion order isn't guaranteed to match `posted` order
+    int order[MyMesh::ALERT_LOG_SIZE];
+    for (int i = 0; i < n; i++) order[i] = (start + i) % MyMesh::ALERT_LOG_SIZE;
+    for (int i = 0; i < n; i++) {
+      for (int j = i + 1; j < n; j++) {
+        if (the_mesh.alert_log[order[j]].posted > the_mesh.alert_log[order[i]].posted) {
+          int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+        }
+      }
+    }
+
+    String json = "[";
+    for (int i = 0; i < n; i++) {
+      auto& alert = the_mesh.alert_log[order[i]];
+      if (i > 0) json += ",";
+      json += "{\"posted\":";
+      json += alert.posted;
+      json += ",\"body\":\"";
+      appendJsonEscaped(json, alert.body);
+      json += "\"}";
+    }
+    json += "]";
+    server.send(200, "application/json", json);
+  });
+
+  // publishes a signed admin alert. `payload` is the STOOP_ALERT_PAYLOAD_LEN-byte
+  // wire payload, hex-encoded (consistent with the session-token hex above, and
+  // avoids any embedded-NUL risk in a raw binary POST body). No ADMIN_PASSWORD
+  // check here -- the Ed25519 signature IS the authentication, same as a
+  // mesh-received alert; anyone can POST, only a validly-signed one does anything.
+  server.on("/api/alerts", HTTP_POST, [](){
+    String hex = server.arg("payload");
+    uint8_t payload[STOOP_ALERT_PAYLOAD_LEN];
+    if ((int)hex.length() != STOOP_ALERT_PAYLOAD_LEN * 2 ||
+        !mesh::Utils::fromHex(payload, STOOP_ALERT_PAYLOAD_LEN, hex.c_str())) {
+      server.send(400, "application/json", "{\"ok\":false,\"reason\":\"malformed payload\"}");
+      return;
+    }
+
+    StoopAlertVerifyResult result = the_mesh.publishAlert(payload, STOOP_ALERT_PAYLOAD_LEN);
+    if (result != StoopAlertVerifyResult::OK) {
+      String json = "{\"ok\":false,\"reason\":\"";
+      appendJsonEscaped(json, stoopAlertVerifyResultReason(result));
+      json += "\"}";
+      server.send(400, "application/json", json);
+      return;
+    }
+
+    server.send(200, "application/json", "{\"ok\":true}");
   });
 
   server.on("/api/stoop/max_message_bytes", HTTP_GET, [](){

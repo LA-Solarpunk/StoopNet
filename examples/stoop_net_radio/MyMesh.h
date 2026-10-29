@@ -25,6 +25,7 @@
 
 #include "DataStore.h"
 #include "NodePrefs.h"
+#include "StoopAlert.h"
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -108,6 +109,16 @@ public:
   StoopMsg stoop_log[STOOP_LOG_SIZE];
   int stoop_log_count = 0;
   void logStoopMsg(uint32_t timestamp, const char* text);
+
+  static const int ALERT_LOG_SIZE = 32;
+  StoopAlert alert_log[ALERT_LOG_SIZE];
+  int alert_log_count = 0;
+
+  // verifies `payload` (STOOP_ALERT_PAYLOAD_LEN bytes) and, if valid, logs it
+  // and forwards it on the admin alerts channel. Used by the local HTTP
+  // publish path; mesh-received alerts go through the same verifyStoopAlert()
+  // via onChannelDataRecv() below instead.
+  StoopAlertVerifyResult publishAlert(const uint8_t* payload, size_t len);
 
 protected:
   float getAirtimeBudgetFactor() const override;
@@ -193,6 +204,10 @@ public:
   bool hasPendingWork() const;
 
 private:
+  int stoop_channel_idx = -1;
+  int admin_channel_idx = -1;
+  void logAlert(const StoopAlert& alert);
+
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
   void writeDisabledFrame();

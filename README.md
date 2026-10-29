@@ -76,6 +76,23 @@ Once a node is out in the field, you don't need to pull it to re-flash over USB.
 
 This only replaces the application code — anything in the node's SPIFFS partition (mesh identity, channel config) survives the update. As noted above, this site has no TLS, so the upload and the admin password it's gated behind both travel in the clear like everything else here.
 
+## Admin alerts
+
+Beyond enabling/disabling interfaces, the admin can publish signed notices ("boil-water advisory lifted", "node going down for maintenance") that show up for anyone browsing the node, at `/alerts.html`. Unlike `ADMIN_PASSWORD`, this isn't a shared password — it's a real keypair, and only someone holding the passphrase it was derived from can publish anything a node will accept.
+
+**One-time setup**, by whoever runs the admin side of the network:
+
+```
+pip install -r tools/requirements.txt
+echo -n '<your passphrase>' | python3 tools/stoop_keygen.py
+```
+
+Paste the printed `-D STOOP_ADMIN_PUBKEY=...` line into `platformio.ini` (`[stoop_radio_base]`), replacing the placeholder that's there by default. This is a public key, not a secret, so it's committed rather than living in `platformio.local.ini` — anyone can see which key a node trusts. Keep the passphrase itself somewhere safe; it's the only way to publish an alert, and it's never written to disk or sent anywhere by the admin page.
+
+**Publishing**, from `/admin`: write the alert text (95 UTF-8 bytes max, tracked by a live counter), pick a posted date (defaults to now), and enter the passphrase. The browser derives the signing key locally (Argon2id, ~1s on a phone — that pause is expected), signs the alert, and only sends the signed result to the node; the passphrase and derived key never leave the page. The node verifies the signature before accepting anything, the same way whether the alert arrived from this HTTP request or from another node over the mesh — mistyped passphrases fail locally with a reason; forged or malformed alerts arriving over the mesh are dropped silently.
+
+Alerts ride their own `#stoop-alerts` channel (`STOOP_ADMIN_CHANNEL`), separate from `#stoop` chat, so they propagate to other Stoop Net nodes the same way chat messages do. Like the `#stoop` log, they currently live in RAM only and don't survive a reboot (see ToDo).
+
 ## Repo layout
 
 Stoop Net is a fork of MeshCore and stays mergeable with upstream on purpose. All Stoop Net-specific code lives under `examples/stoop_net_radio/`; shared MeshCore source under `src/` is not modified.

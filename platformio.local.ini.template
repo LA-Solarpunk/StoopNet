@@ -28,3 +28,9 @@ build_flags =
    ; companion radio interfaces (BLE/USB/WiFi). Defaults to "password" if
    ; left commented out.
    ; -D ADMIN_PASSWORD='"<your admin password>"'
+   
+   ; generate the pubkey with the stoop_keygen.py script, this is a public key and 
+   ; does not need to stay private
+   ; -D STOOP_ADMIN_PUBKEY='"<public key>"'
+   ; the alerts use a public hashtag channel, specify it here
+   ; -D STOOP_ADMIN_CHANNEL='"<alert channel name>"'
