@@ -15,10 +15,6 @@
 #define STOOP_NODE_NAME "stoop"
 #endif
 
-#ifndef ADMIN_PASSWORD
-#define ADMIN_PASSWORD "password"
-#endif
-
 // TODO(Heidt) unclear if there's a limit in the FW on username length,
 // but https://github.com/meshcore-dev/MeshCore/issues/2613 suggests 23 is the max
 #define MAX_USERNAME_LEN 23
@@ -129,8 +125,12 @@ void configureServer() {
   }
 
   // enables/disables interface_manager (BLE/USB/WiFi companion interfaces)
-  // when given the correct ADMIN_PASSWORD
+  // when given the correct ADMIN_PASSWORD. With no ADMIN_PASSWORD set at build
+  // time, the interfaces can't be toggled at all
   server.on("/api/admin", HTTP_POST, [](){
+#ifndef ADMIN_PASSWORD
+    server.send(503, "text/plain", "admin disabled");
+#else
     String password = server.arg("password");
     String action = server.arg("action");
     if (password != ADMIN_PASSWORD) {
@@ -151,6 +151,7 @@ void configureServer() {
     json += interface_manager.isEnabled() ? "true" : "false";
     json += "}";
     server.send(200, "application/json", json);
+#endif
   });
 
   // returns admin alerts sorted newest-first: [{"posted":123,"body":"..."}]
@@ -302,7 +303,9 @@ void configureServer() {
     server.send(302, "text/plain", "");
   });
 
+#ifdef ADMIN_PASSWORD
   ElegantOTA.begin(&server, "admin", ADMIN_PASSWORD);
+#endif
   server.begin();
 }
 

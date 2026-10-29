@@ -363,6 +363,9 @@
       } else if (res.status === 403) {
         resultEl.textContent = 'Incorrect password.';
         resultEl.className = 'result err';
+      } else if (res.status === 503) {
+        resultEl.textContent = 'Admin controls are disabled on this node.';
+        resultEl.className = 'result err';
       } else {
         resultEl.textContent = 'Request failed.';
         resultEl.className = 'result err';

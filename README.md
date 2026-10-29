@@ -71,7 +71,7 @@ Once a node is out in the field, you don't need to pull it to re-flash over USB.
    This produces `.pio/build/heltec_v4_stoop_radio/firmware.bin` — that's the file to upload. Don't use the `*-merged.bin` from the `mergebin` target; that one bundles the bootloader and partition table too and is only for a first-time flash over USB.
 
 2. Connect to the node's WiFi (or its mDNS address if it's configured as a WiFi client) and go to `http://<node address>/update`.
-3. Log in with username `admin` and the node's `ADMIN_PASSWORD` (set in `platformio.local.ini`, the same password used on the `/admin` page to enable/disable the radio interfaces).
+3. Log in with username `admin` and the node's `ADMIN_PASSWORD` (set in `platformio.local.ini`, the same password used on the `/admin` page to enable/disable the radio interfaces). If no `ADMIN_PASSWORD` is set, OTA is turned off entirely, and so is enabling/disabling the interfaces from `/admin`.
 4. Upload `firmware.bin`. The node reboots into the new firmware automatically once the upload finishes.
 
 This only replaces the application code — anything in the node's SPIFFS partition (mesh identity, channel config) survives the update. As noted above, this site has no TLS, so the upload and the admin password it's gated behind both travel in the clear like everything else here.
