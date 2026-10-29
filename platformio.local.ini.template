@@ -12,7 +12,11 @@
 
 [stoop_secrets]
 build_flags =
-   -D STOOP_CHANNEL_PSK='"<your base64 key>"'
+   ; The #stoop chat channel. STOOP_CHANNEL_PSK is the channel's base64 key,
+   ; generate one with tools/stoop_channel_keygen.py ("private" for a private
+   ; channel, or "hashtag <name>" for a public hashtag channel)
+   -D STOOP_CHANNEL_NAME='"#stoop"'
+   -D STOOP_CHANNEL_PSK='"bxXnE9cKvnxW6BJ4gcRMTA=="'
 
    ; Optional: have the device join an existing WiFi network as a client and
    ; serve the web UI over mDNS at http://<CLIENT_WIFI_URL>.local instead of
@@ -32,5 +36,8 @@ build_flags =
    ; generate the pubkey with the stoop_keygen.py script, this is a public key and 
    ; does not need to stay private
    ; -D STOOP_ADMIN_PUBKEY='"<public key>"'
-   ; the alerts use a public hashtag channel, specify it here
-   ; -D STOOP_ADMIN_CHANNEL='"<alert channel name>"'
+   ; The admin alerts channel. Alerts are authenticated by the STOOP_ADMIN_PUBKEY
+   ; signature, so this is normally a public hashtag channel, get its key with
+   ;   python3 tools/stoop_channel_keygen.py hashtag "#stoop-alerts"
+   -D STOOP_ADMIN_CHANNEL_NAME='"#stoop-alerts"'
+   -D STOOP_ADMIN_CHANNEL_PSK='"MRlRXqbpzFM8RYX0Q4ZyhA=="'

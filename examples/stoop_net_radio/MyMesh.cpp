@@ -4,18 +4,17 @@
 #include <Mesh.h>
 #include <Utils.h>
 
-// base64-encoded pre-shared key for the #stoop channel; override at build time
-// (e.g. -D STOOP_CHANNEL_PSK='"..."') to make #stoop a private channel
-#ifndef STOOP_CHANNEL_PSK
-#define STOOP_CHANNEL_PSK PUBLIC_GROUP_PSK
+// chat and admin alerts channels, set at build time in platformio.local.ini (see
+// platformio.local.ini.template). Each *_PSK is a base64-encoded pre-shared key
+// (tools/stoop_channel_keygen.py generates both private and hashtag keys). The
+// admin channel can safely be a public hashtag channel -- authenticity comes
+// from the STOOP_ADMIN_PUBKEY signature, not channel secrecy
+#if !defined(STOOP_CHANNEL_NAME) || !defined(STOOP_CHANNEL_PSK)
+#error "STOOP_CHANNEL_NAME and STOOP_CHANNEL_PSK must be defined, see platformio.local.ini.template"
 #endif
-
-// name of the admin alerts channel. Deliberately public (PUBLIC_GROUP_PSK) --
-// authenticity comes from the STOOP_ADMIN_PUBKEY signature, not channel secrecy
-#ifndef STOOP_ADMIN_CHANNEL
-#define STOOP_ADMIN_CHANNEL "#stoop-alerts"
+#if !defined(STOOP_ADMIN_CHANNEL_NAME) || !defined(STOOP_ADMIN_CHANNEL_PSK)
+#error "STOOP_ADMIN_CHANNEL_NAME and STOOP_ADMIN_CHANNEL_PSK must be defined, see platformio.local.ini.template"
 #endif
-#define STOOP_ALERT_CHANNEL_PSK "MRlRXqbpzFM8RYX0Q4ZyhA==" 
 
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
@@ -1026,11 +1025,11 @@ void MyMesh::begin(bool has_display) {
   resetContacts();
   _store->loadContacts(this);
   bootstrapRTCfromContacts();
-  ChannelDetails* stoop_channel = addChannel("#stoop", STOOP_CHANNEL_PSK); // pre-configure the default #stoop channel; PSK set at compile time
+  ChannelDetails* stoop_channel = addChannel(STOOP_CHANNEL_NAME, STOOP_CHANNEL_PSK);
   if (stoop_channel != NULL) {
     stoop_channel_idx = findChannelIdx(stoop_channel->channel);
   }
-  ChannelDetails* admin_channel = addChannel(STOOP_ADMIN_CHANNEL, STOOP_ALERT_CHANNEL_PSK);
+  ChannelDetails* admin_channel = addChannel(STOOP_ADMIN_CHANNEL_NAME, STOOP_ADMIN_CHANNEL_PSK);
   if (admin_channel != NULL) {
     admin_channel_idx = findChannelIdx(admin_channel->channel);
   }

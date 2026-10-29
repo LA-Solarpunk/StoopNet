@@ -91,7 +91,7 @@ Paste the printed `-D STOOP_ADMIN_PUBKEY=...` line into `platformio.ini` (`[stoo
 
 **Publishing**, from `/admin`: write the alert text (95 UTF-8 bytes max, tracked by a live counter), pick a posted date (defaults to now), and enter the passphrase. The browser derives the signing key locally (Argon2id, ~1s on a phone — that pause is expected), signs the alert, and only sends the signed result to the node; the passphrase and derived key never leave the page. The node verifies the signature before accepting anything, the same way whether the alert arrived from this HTTP request or from another node over the mesh — mistyped passphrases fail locally with a reason; forged or malformed alerts arriving over the mesh are dropped silently.
 
-Alerts ride their own `#stoop-alerts` channel (`STOOP_ADMIN_CHANNEL`), separate from `#stoop` chat, so they propagate to other Stoop Net nodes the same way chat messages do. Like the `#stoop` log, they currently live in RAM only and don't survive a reboot (see ToDo).
+Alerts ride their own `#stoop-alerts` channel (`STOOP_ADMIN_CHANNEL_NAME`), separate from `#stoop` chat, so they propagate to other Stoop Net nodes the same way chat messages do. Like the `#stoop` log, they currently live in RAM only and don't survive a reboot (see ToDo).
 
 ## Repo layout
 
